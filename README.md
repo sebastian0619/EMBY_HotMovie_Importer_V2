@@ -1,4 +1,4 @@
-# Emby服务器自动创建热门影剧合集
+![image](https://github.com/user-attachments/assets/a9b303ed-67e8-4c6c-9ae8-351afecd920e)# Emby服务器自动创建热门影剧合集
 
 啥都不会，GPT写的。 脚本大概能用，应该。。。
 在大佬的改良版上修改 [https://github.com/Baiganjia/EMBY_HotMovie_Importer](https://github.com/xuanqb/EMBY_HotMovie_Importer) 实现
@@ -8,6 +8,9 @@
 
 
 # 运行效果
+![image](docs/创建时.png)
+![image](docs/清空.png)
+![image](docs/创建完毕.png)
 
 # 前期准备
 如果需要TOP250的榜单能够获取250个数据，则需Docker部署大佬的RSSHub，官方的默认只能抓取10条，
