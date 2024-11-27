@@ -10,7 +10,7 @@
 
 # 运行效果
 ![image](docs/创建时.png)
-![image](docs/清空.png)
+![image](docs/清空合集.png)
 ![image](docs/创建完毕.png)
 
 # 前期准备
