@@ -1,6 +1,7 @@
 # Emby服务器自动创建热门影剧合集
 
 啥都不会，GPT写的。 脚本大概能用，应该。。。
+
 在大佬的改良版上修改 [https://github.com/Baiganjia/EMBY_HotMovie_Importer](https://github.com/xuanqb/EMBY_HotMovie_Importer) 实现
 
 + 增加了合集封面创建，会自动指定合集内的某一个项目的封面作为该合集的封面，而不是默认的那种多图拼接的封面。
