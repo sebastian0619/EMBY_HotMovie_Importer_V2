@@ -35,7 +35,14 @@ services:
     container_name: rsshub
 ```
 
-# 配置文件
+# 先进行下方配置文件的修改，再运行
+```
+pip install -r requirements.txt
+python EMBY_HotMovie_Importer.py
+```
+
+
+# 配置文件的修改
 ``` conf
 [Server]
 # 这里填入你Emby服务器地址
