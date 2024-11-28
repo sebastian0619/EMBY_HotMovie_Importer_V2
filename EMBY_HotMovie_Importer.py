@@ -47,7 +47,8 @@ class Get_Detail(object):
         self.ignore_played = config.getboolean('Extra', 'ignore_played', fallback=False)
         self.emby_user_id = config.get('Extra', 'emby_user_id', fallback=None)
         self.rss_ids = config.get('Collection', 'rss_ids').split(',')
-        self.missing_movies_file = config.get('Output', 'missing_movies_file', fallback=None)
+        self.csv_file_path = config.get('Output', 'csv_file_path')  # 从配置文件中获取文件路径
+        # self.csv_mode = config.get('Output', 'csv_mode')  # 从配置文件中获取文件模式
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36 Edg/101.0.1210.39"
         }
@@ -124,7 +125,7 @@ class Get_Detail(object):
         params = {
             "ParentId": collection_id,
             "Recursive": "false",
-            "Limit": 100,
+            "Limit": 999,
             "api_key": self.emby_api_key
         }
         response = requests.get(url, params=params)
@@ -161,6 +162,12 @@ class Get_Detail(object):
             print(f'合集封面更新失败 {box_id}.')
             
     def run(self):
+        # 每次执行前先清空CSV文件，不需要的话就注释掉
+        # try:
+            # os.remove(self.csv_file_path) 
+        # except FileNotFoundError:
+            # pass
+            
         # 遍历 RSS ID 获取电影信息
         for rss_id in self.rss_ids:
             # 获取豆瓣 RSS 数据
@@ -217,9 +224,12 @@ class Get_Detail(object):
                 image_url = f"{self.emby_server}/emby/Items/{emby_id}/Images/Primary?api_key={self.emby_api_key}"
                 self.replace_cover_image(box_id, image_url)
 
+
+
             # 将电影逐一加入合集
             for db_movie in self.dbmovies.movies:
                 movie_name = db_movie.name
+                movie_year = db_movie.year
                 # 确保 emby_box 是有效对象并且含有 box_movies 属性
                 if isinstance(emby_box, dict) and 'box_movies' in emby_box:
                     if movie_name in emby_box['box_movies']:
@@ -239,11 +249,14 @@ class Get_Detail(object):
                 else:
                     self.noexist.append(movie_name)
                     print(f"电影 '{movie_name}' 不存在于 Emby 中，记录为未找到")
+                    
+                    # 将未找到的电影记录到 CSV 文件
+                    with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
+                        writer = csv.writer(file)
+                        writer.writerow([movie_name, movie_year, box_name])
 
             print(f"更新完成: {box_name}")
 
-        # 结束后将未找到的电影记录到csv文件中
-        self.log_missing_movies(db_movie)
 
     def get_douban_rss(self, rss_id):
         # 解析rss
@@ -264,29 +277,6 @@ class Get_Detail(object):
         db_movie = DbMovieRss(feed.feed.title, movies)
         return db_movie
 
-    def log_missing_movies(self, db_movie: DbMovie):
-        box_name = self.dbmovies.title
-        year = db_movie.year
-        if self.missing_movies_file:
-            try:
-                # 读取配置文件中的 csv_mode 设置，默认为 'w'
-                csv_mode = config.get('FileSettings', 'csv_mode', fallback='w')
-                
-                # 使用读取的 csv_mode 来打开文件
-                with open(self.missing_movies_file, mode=csv_mode, newline='', encoding='utf-8') as file:
-                    writer = csv.writer(file)
-                    
-                    # 如果文件为空且 mode 为 'w'，则写入表头
-                    if file.tell() == 0 and csv_mode == 'w':
-                        writer.writerow(["Movie", "Year", "Collection"])
-                    
-                    # 写入未找到的电影
-                    for movie in self.noexist:
-                        writer.writerow([movie, year, box_name])  # 写入电影名、年份和合集名
-
-                print(f"已将未找到的电影记录到 {self.missing_movies_file}")
-            except Exception as e:
-                print(f"记录未找到的电影时出错: {e}")
 
 if __name__ == "__main__":
     gd = Get_Detail()
