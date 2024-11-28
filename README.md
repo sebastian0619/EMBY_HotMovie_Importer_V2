@@ -40,14 +40,12 @@ emby_server = http://xxx.xx.xx.x:8096
 # 这里填入你Emby API密钥
 emby_api_key = xxxxxxx
 rsshub_server = http://xx.xx.x.x:1200
-# emby_user_id在浏览器链接栏获取，不知道百度
-emby_user_id = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
 ```
 
 ``` conf
 [Collection]
-#各种榜单 按需选择
+# 各种榜单 按需自行选择
+# 测试链接：http://{rsshub_server}/douban/movie/weekly/tv_hot
 
 # 实时热门书影音	subject_real_time_hotest
 # 影院热映	movie_showing
@@ -67,7 +65,8 @@ emby_user_id = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # 热播新剧日剧	tv_japanese
 # 热播新剧韩剧	tv_korean
 # 热播新剧动画	tv_animation
+# 
 
-rss_ids=tv_american,tv_domestic,movie_top250,tv_japanese,tv_animation
+rss_ids=tv_american,tv_domestic,tv_japanese,tv_animation,tv_korean
 ```
 
