@@ -162,12 +162,6 @@ class Get_Detail(object):
             print(f'合集封面更新失败 {box_id}.')
             
     def run(self):
-        # 每次执行前先清空CSV文件，不需要的话就注释掉
-        # try:
-            # os.remove(self.csv_file_path) 
-        # except FileNotFoundError:
-            # pass
-            
         # 遍历 RSS ID 获取电影信息
         for rss_id in self.rss_ids:
             # 获取豆瓣 RSS 数据
