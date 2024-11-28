@@ -14,36 +14,21 @@
 ![image](docs/清空合集.png)
 ![image](docs/创建完毕.png)
 
-# 前期准备
-如果需要TOP250的榜单能够获取250个数据，则需Docker部署大佬的RSSHub，官方的默认只能抓取10条，
+# 1.Docker部署rsshub或者用官方的
+如果需要TOP250的榜单能够获取250个数据，则需Docker部署大佬的RSSHub，官方的默认只能抓取10条
 
-### 部署方式1
 ``` Bash
 docker run -d --name rsshub --restart unless-stopped -p 1200:1200 -e NODE_ENV=production xuanqb/rsshub:latest
 ```
 
-### 或者部署方式2：
-``` docker-compose
-version: '3'
-services:
-  rsshub:
-    image: xuanqb/rsshub:latest
-    restart: unless-stopped
-    ports:
-      - 1200:1200
-    environment:
-      NODE_ENV: production
-    container_name: rsshub
-```
-
-# 先进行下方配置文件的修改，再运行
+# 3. 安装依赖&运行程序
 ```
 pip install -r requirements.txt
 python EMBY_HotMovie_Importer.py
 ```
 
 
-# 配置文件的修改
+# 2. 修改配置文件
 ``` conf
 [Server]
 # 这里填入你Emby服务器地址
@@ -51,6 +36,8 @@ emby_server = http://xxx.xx.xx.x:8096
 # 这里填入你Emby API密钥
 emby_api_key = xxxxxxx
 rsshub_server = http://xx.xx.x.x:1200
+# emby_user_id在浏览器链接栏获取，不知道百度
+emby_user_id = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ```
 
@@ -76,15 +63,7 @@ rsshub_server = http://xx.xx.x.x:1200
 # 热播新剧日剧	tv_japanese
 # 热播新剧韩剧	tv_korean
 # 热播新剧动画	tv_animation
-# 
 
 rss_ids=tv_american,tv_domestic,movie_top250,tv_japanese,tv_animation
 ```
-``` conf
-# 额外配置
-[Extra]
-# 忽略播放过的视频，（不加入合集）
-ignore_played = false
-# emby_user_id在浏览器链接栏获取，不知道百度
-emby_user_id = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
+
