@@ -16,21 +16,21 @@
 
 # 运行向导
 
-- 1.Docker部署rsshub或者用官方的
+#### 1.Docker部署rsshub或者用官方的
 如果需要TOP250的榜单能够获取250个数据，则需Docker部署大佬的RSSHub，官方的默认只能抓取10条
 
 ``` Bash
 docker run -d --name rsshub --restart unless-stopped -p 1200:1200 -e NODE_ENV=production xuanqb/rsshub:latest
 ```
 
-- 3. 安装依赖&运行程序
+#### 3. 安装依赖&运行程序
 ```
 pip install -r requirements.txt
 python EMBY_HotMovie_Importer.py
 ```
 
 
-- 2. 修改config.conf配置文件
+#### 2. 修改config.conf配置文件
 ``` conf
 [Server]
 # 这里填入你Emby服务器地址
