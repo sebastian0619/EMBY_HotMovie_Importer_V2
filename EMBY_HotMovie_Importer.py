@@ -267,12 +267,19 @@ class Get_Detail(object):
         movies = []
         for item in feed.entries:
             name = item.title
+            # 豆瓣和TMDB的影片名有时候会不一样，导致明明库里有的却没有匹配上。
+            name_mapping = {
+                "7号房的礼物": "七号房的礼物"
+            }
+            name = name_mapping.get(name, name)
             type = item.type
             if type == 'book':
                 continue
                 # 删除季信息
             if type == "tv":
                 name = re.sub(r" 第[一二三四五六七八九十\d]+季", "", name)
+
+                
             movies.append(DbMovie(name, item.year, type))
         db_movie = DbMovieRss(feed.feed.title, movies)
         return db_movie
