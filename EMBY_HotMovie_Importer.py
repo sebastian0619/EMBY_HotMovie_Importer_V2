@@ -5,10 +5,8 @@ import base64
 import requests
 import feedparser
 import re
-
+import csv
 from typing import List
-
-
 
 config = ConfigParser()
 with open('config.conf', encoding='utf-8') as f:
@@ -21,28 +19,23 @@ else:
     os.environ.pop('http_proxy', None)
     os.environ.pop('https_proxy', None)
 
-
 class DbMovie:
     def __init__(self, name, year, type):
         self.name = name
         self.year = year
         self.type = type
 
-
 class DbMovieRss:
     def __init__(self, title, movies: List[DbMovie]):
         self.title = title
         self.movies = movies
-
 
 class EmbyBox:
     def __init__(self, box_id, box_movies):
         self.box_id = box_id
         self.box_movies = box_movies
 
-
 class Get_Detail(object):
-
     def __init__(self):
         self.noexist = []
         self.dbmovies = {}
@@ -52,9 +45,9 @@ class Get_Detail(object):
         self.emby_api_key = config.get('Server', 'emby_api_key')
         self.rsshub_server = config.get('Server', 'rsshub_server')
         self.ignore_played = config.getboolean('Extra', 'ignore_played', fallback=False)
-        self.emby_user_id = config.get('Extra', 'emby_user_id', fallback='')
+        self.emby_user_id = config.get('Extra', 'emby_user_id', fallback=None)
         self.rss_ids = config.get('Collection', 'rss_ids').split(',')
-
+        self.missing_movies_file = config.get('Output', 'missing_movies_file', fallback=None)
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36 Edg/101.0.1210.39"
         }
@@ -139,12 +132,10 @@ class Get_Detail(object):
         return response.json().get("Items", [])
 
     def clear_collection(self, collection_id):
-
         items = self.get_collection_items(collection_id)
         if not items:
             print(f"集合 {collection_id} 中没有需要清空的项目")
             return
-
         item_ids = [item["Id"] for item in items]
         url = f"{self.emby_server}/emby/Collections/{collection_id}/Items/Delete"
         params = {
@@ -159,15 +150,11 @@ class Get_Detail(object):
         response = requests.get(image_url)
         image_content = response.content
         base64_image = base64.b64encode(image_content).decode('utf-8')
-
         url = f'{self.emby_server}/emby/Items/{box_id}/Images/Primary?api_key={self.emby_api_key}'
-
         headers = {
             'Content-Type': 'image/jpeg'
         }
-
         response = requests.post(url, headers=headers, data=base64_image)
-
         if response.status_code == 204:
             print(f'成功更新合集封面 {box_id}.')
         else:
@@ -181,14 +168,11 @@ class Get_Detail(object):
             if not self.dbmovies or not self.dbmovies.movies:
                 print(f"RSS 数据获取失败或无有效电影: rss_id: {rss_id}")
                 continue  # 跳过当前 RSS
-
             box_name = "✨" + self.dbmovies.title
             print(f'更新 {box_name} rss_id: {rss_id}')
-
             # 检查合集是否存在
             emby_box = self.check_collection_exists(box_name)
             box_id = emby_box.box_id if emby_box else None
-            print(f'box_id: {box_id}')
 
             if box_id:
                 # 如果合集存在，清空合集内容
@@ -213,25 +197,22 @@ class Get_Detail(object):
                 # 如果合集不存在，尝试创建
                 print(f"合集 {box_name} 不存在，开始创建...")
                 first_movie_data = None
-
                 # 遍历电影列表，找到第一个有效的 Emby 数据
                 for db_movie in self.dbmovies.movies:
                     emby_data = self.search_emby_by_name_and_year(db_movie)
                     if emby_data:
                         first_movie_data = emby_data
                         break
-
                 if not first_movie_data:
                     print(f"创建合集失败，无法找到初始电影数据，跳过 {box_name}")
                     continue  # 跳过当前 RSS
-
                 emby_id = first_movie_data["Id"]
                 box_id = self.create_collection(box_name, emby_id)
                 if not box_id:
                     print(f"合集 {box_name} 创建失败，跳过")
                     continue
                 print(f"合集 '{box_name}' 已创建成功，ID: {box_id}")
-
+                
                 # 创建合集后，立即更新封面图
                 image_url = f"{self.emby_server}/emby/Items/{emby_id}/Images/Primary?api_key={self.emby_api_key}"
                 self.replace_cover_image(box_id, image_url)
@@ -244,12 +225,10 @@ class Get_Detail(object):
                     if movie_name in emby_box['box_movies']:
                         print(f"电影 '{movie_name}' 已在合集中，跳过")
                         continue
-
                 emby_data = self.search_emby_by_name_and_year(db_movie)
                 if movie_name in self.noexist:
                     print(f"电影 '{movie_name}' 不存在，跳过")
                     continue
-
                 if emby_data:
                     emby_id = emby_data["Id"]
                     added_to_collection = self.add_movie_to_collection(emby_id, box_id)
@@ -263,9 +242,9 @@ class Get_Detail(object):
 
             print(f"更新完成: {box_name}")
 
+        # 结束后将未找到的电影记录到csv文件中
+        self.log_missing_movies(db_movie)
 
-                
-                
     def get_douban_rss(self, rss_id):
         # 解析rss
         rss_url = f"{self.rsshub_server}/douban/movie/weekly/{rss_id}"
@@ -285,6 +264,29 @@ class Get_Detail(object):
         db_movie = DbMovieRss(feed.feed.title, movies)
         return db_movie
 
+    def log_missing_movies(self, db_movie: DbMovie):
+        box_name = self.dbmovies.title
+        year = db_movie.year
+        if self.missing_movies_file:
+            try:
+                # 读取配置文件中的 csv_mode 设置，默认为 'w'
+                csv_mode = config.get('FileSettings', 'csv_mode', fallback='w')
+                
+                # 使用读取的 csv_mode 来打开文件
+                with open(self.missing_movies_file, mode=csv_mode, newline='', encoding='utf-8') as file:
+                    writer = csv.writer(file)
+                    
+                    # 如果文件为空且 mode 为 'w'，则写入表头
+                    if file.tell() == 0 and csv_mode == 'w':
+                        writer.writerow(["Movie", "Year", "Collection"])
+                    
+                    # 写入未找到的电影
+                    for movie in self.noexist:
+                        writer.writerow([movie, year, box_name])  # 写入电影名、年份和合集名
+
+                print(f"已将未找到的电影记录到 {self.missing_movies_file}")
+            except Exception as e:
+                print(f"记录未找到的电影时出错: {e}")
 
 if __name__ == "__main__":
     gd = Get_Detail()
