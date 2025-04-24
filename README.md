@@ -47,25 +47,27 @@ rsshub_server = http://xx.xx.x.x:1200
 # 各种榜单 按需自行选择
 # 测试链接：http://{rsshub_server}/douban/movie/weekly/tv_hot
 
-# 实时热门书影音	subject_real_time_hotest
-# 影院热映	movie_showing
-# 实时热门电影	movie_real_time_hotest
-# 实时热门电视	tv_real_time_hotest
-# 一周口碑电影榜	movie_weekly_best
-# 一周热门电影榜	movie_hot_gaia
-# 一周热门剧集榜	tv_hot
-# 一周热门综艺榜	show_hot
-# 豆瓣TOPO250	movie_top250
-# 华语口碑剧集榜	tv_chinese_best_weekly
-# 全球口碑剧集榜	tv_global_best_weekly
-# 国内口碑综艺榜	show_chinese_best_weekly
-# 国外口碑综艺榜	show_global_best_weekly
-# 热播新剧国产剧	tv_domestic
-# 热播新剧欧美剧	tv_american
-# 热播新剧日剧	tv_japanese
-# 热播新剧韩剧	tv_korean
-# 热播新剧动画	tv_animation
-# 
+# | 分类名称                     | 对应代码                      |
+# |------------------------------|-------------------------------|
+# | 实时热门书影音               | subject_real_time_hotest      |
+# | 影院热映                     | movie_showing                 |
+# | 实时热门电影                 | movie_real_time_hotest        |
+# | 实时热门电视                 | tv_real_time_hotest           |
+# | 豆瓣TOPO250                  | movie_top250                  |
+# | 一周口碑电影榜（推荐）       | movie_weekly_best             |
+# | 豆瓣热门电影榜（推荐）       | movie_hot_gaia                |
+# | 近期热门剧集（推荐）         | tv_hot                        |
+# | 一周热门综艺榜               | show_hot                      |
+# | 华语口碑剧集榜               | tv_chinese_best_weekly        |
+# | 全球口碑剧集榜               | tv_global_best_weekly         |
+# | 国内口碑综艺榜               | show_chinese_best_weekly      |
+# | 国外口碑综艺榜               | show_global_best_weekly       |
+# | 热播新剧国产剧               | tv_domestic                   |
+# | 热播新剧欧美剧               | tv_american                   |
+# | 热播新剧日剧                 | tv_japanese                   |
+# | 热播新剧韩剧                 | tv_korean                     |
+# | 近期热门动画                 | tv_animation                  |
+
 
 rss_ids=tv_american,tv_domestic,tv_japanese,tv_animation,tv_korean
 ```
