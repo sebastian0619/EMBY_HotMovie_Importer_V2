@@ -11,6 +11,7 @@ import schedule
 import logging
 from typing import List
 from datetime import datetime
+from croniter import croniter
 
 # 配置日志
 logging.basicConfig(
@@ -320,24 +321,42 @@ def main():
         logging.info("启动守护模式")
         if cron_expression:
             logging.info(f"使用cron表达式: {cron_expression}")
-            schedule.every().cron(cron_expression).do(run_scheduled_task)
+            # 使用croniter计算下次运行时间
+            cron = croniter(cron_expression, datetime.now())
+            next_run = cron.get_next(datetime)
+            logging.info(f"下次运行时间: {next_run}")
+            
+            while True:
+                try:
+                    now = datetime.now()
+                    if now >= next_run:
+                        run_scheduled_task()
+                        next_run = cron.get_next(datetime)
+                        logging.info(f"下次运行时间: {next_run}")
+                    time.sleep(30)  # 每30秒检查一次
+                except KeyboardInterrupt:
+                    logging.info("收到退出信号，程序退出")
+                    break
+                except Exception as e:
+                    logging.error(f"运行出错: {str(e)}")
+                    time.sleep(60)  # 出错后等待1分钟再继续
         else:
             logging.info(f"使用固定间隔: {schedule_interval}分钟")
             schedule.every(schedule_interval).minutes.do(run_scheduled_task)
-        
-        # 立即执行一次
-        run_scheduled_task()
-        
-        while True:
-            try:
-                schedule.run_pending()
-                time.sleep(1)
-            except KeyboardInterrupt:
-                logging.info("收到退出信号，程序退出")
-                break
-            except Exception as e:
-                logging.error(f"运行出错: {str(e)}")
-                time.sleep(60)  # 出错后等待1分钟再继续
+            
+            # 立即执行一次
+            run_scheduled_task()
+            
+            while True:
+                try:
+                    schedule.run_pending()
+                    time.sleep(1)
+                except KeyboardInterrupt:
+                    logging.info("收到退出信号，程序退出")
+                    break
+                except Exception as e:
+                    logging.error(f"运行出错: {str(e)}")
+                    time.sleep(60)  # 出错后等待1分钟再继续
     else:
         logging.info("执行单次任务")
         gd = Get_Detail()
