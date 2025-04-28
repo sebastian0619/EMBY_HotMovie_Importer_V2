@@ -6,7 +6,21 @@ import requests
 import feedparser
 import re
 import csv
+import time
+import schedule
+import logging
 from typing import List
+from datetime import datetime
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('emby_importer.log'),
+        logging.StreamHandler()
+    ]
+)
 
 config = ConfigParser()
 with open('config.conf', encoding='utf-8') as f:
@@ -18,6 +32,11 @@ if use_proxy:
 else:
     os.environ.pop('http_proxy', None)
     os.environ.pop('https_proxy', None)
+
+# 获取定时配置
+enable_schedule = config.getboolean('Schedule', 'enable_schedule', fallback=False)
+schedule_interval = config.getint('Schedule', 'schedule_interval', fallback=60)
+cron_expression = config.get('Schedule', 'cron', fallback='')
 
 class DbMovie:
     def __init__(self, name, year, type):
@@ -187,8 +206,17 @@ class Get_Detail(object):
                     if not emby_box or len(emby_box) == 0:
                         print(f"集合 {box_id} 清空成功，准备重新添加电影...")
                         # 清空合集后，更新封面图
-                        # image_url = f"{self.emby_server}/emby/Items/{emby_id}/Images/Primary?api_key={self.emby_api_key}"
-                        # self.replace_cover_image(box_id, image_url)
+                        first_movie_data = None
+                        # 遍历电影列表，找到第一个有效的 Emby 数据
+                        for db_movie in self.dbmovies.movies:
+                            emby_data = self.search_emby_by_name_and_year(db_movie)
+                            if emby_data:
+                                first_movie_data = emby_data
+                                break
+                        if first_movie_data:
+                            emby_id = first_movie_data["Id"]
+                            image_url = f"{self.emby_server}/emby/Items/{emby_id}/Images/Primary?api_key={self.emby_api_key}"
+                            self.replace_cover_image(box_id, image_url)
                     else:
                         print(f"集合 {box_id} 清空失败，跳过添加电影")
                         continue  # 跳过添加操作
@@ -278,7 +306,42 @@ class Get_Detail(object):
         db_movie = DbMovieRss(feed.feed.title, movies)
         return db_movie
 
+def run_scheduled_task():
+    logging.info("开始执行定时任务")
+    try:
+        gd = Get_Detail()
+        gd.run()
+    except Exception as e:
+        logging.error(f"执行任务时发生错误: {str(e)}")
+    logging.info("定时任务执行完成")
+
+def main():
+    if enable_schedule:
+        logging.info("启动守护模式")
+        if cron_expression:
+            logging.info(f"使用cron表达式: {cron_expression}")
+            schedule.every().cron(cron_expression).do(run_scheduled_task)
+        else:
+            logging.info(f"使用固定间隔: {schedule_interval}分钟")
+            schedule.every(schedule_interval).minutes.do(run_scheduled_task)
+        
+        # 立即执行一次
+        run_scheduled_task()
+        
+        while True:
+            try:
+                schedule.run_pending()
+                time.sleep(1)
+            except KeyboardInterrupt:
+                logging.info("收到退出信号，程序退出")
+                break
+            except Exception as e:
+                logging.error(f"运行出错: {str(e)}")
+                time.sleep(60)  # 出错后等待1分钟再继续
+    else:
+        logging.info("执行单次任务")
+        gd = Get_Detail()
+        gd.run()
 
 if __name__ == "__main__":
-    gd = Get_Detail()
-    gd.run()
+    main()
