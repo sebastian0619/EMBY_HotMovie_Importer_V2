@@ -319,6 +319,10 @@ def run_scheduled_task():
 def main():
     if enable_schedule:
         logging.info("启动守护模式")
+        # 启动时立即执行一次
+        logging.info("程序启动，立即执行一次任务")
+        run_scheduled_task()
+        
         if cron_expression:
             logging.info(f"使用cron表达式: {cron_expression}")
             # 使用croniter计算下次运行时间
@@ -343,9 +347,6 @@ def main():
         else:
             logging.info(f"使用固定间隔: {schedule_interval}分钟")
             schedule.every(schedule_interval).minutes.do(run_scheduled_task)
-            
-            # 立即执行一次
-            run_scheduled_task()
             
             while True:
                 try:
