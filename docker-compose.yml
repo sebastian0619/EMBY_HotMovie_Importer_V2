@@ -1,0 +1,26 @@
+services:
+  emby-importer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: emby-movie-importer
+    volumes:
+      # 配置文件映射
+      - ./config.conf:/app/config.conf
+      # 输出文件映射
+      #- ./missing_movies.csv:/app/missing_movies.csv
+    environment:
+      # 如果需要设置环境变量，可以在这里添加
+      # - EMBY_SERVER=http://your-emby-server:8096
+      # - EMBY_API_KEY=your-api-key
+      # - RSSHUB_SERVER=http://your-rsshub-server:1200
+    networks:
+      - emby-network
+    restart: unless-stopped
+    # 设置定时任务，每天凌晨3点运行一次
+    # 如果只需要手动运行，可以注释掉这一行
+    # command: sh -c "while :; do python EMBY_HotMovie_Importer.py; sleep 86400; done"
+
+networks:
+  emby-network:
+    driver: bridge 
