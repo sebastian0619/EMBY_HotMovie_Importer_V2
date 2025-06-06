@@ -2,7 +2,8 @@
 
 啥都不会，AI写的。 脚本大概能用，应该。。。
 
-写了个V1版，被大佬改良了一下， [https://github.com/xuanqb/EMBY_HotMovie_Importer](https://github.com/xuanqb/EMBY_HotMovie_Importer)  我又在他改良的基础上修改了一下才有这个项目，感谢开源
+写了个V1版，被大佬改良了一下， [https://github.com/xuanqb/EMBY_HotMovie_Importer](https://github.com/xuanqb/EMBY_HotMovie_Importer)  我又在他改良的基础上修改了一下才有这个项目，
+感谢开源和AI让这个脚本变得更好
 
 + 2025年6月4日 新增bangumi当季新番的爬取并创建合集
   ![image](docs/bangumi.png)
