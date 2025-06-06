@@ -18,7 +18,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 config = ConfigParser()
 
-with open('EMBY_HotMovie_Importer.conf', encoding='utf-8') as f:
+with open('config.conf', encoding='utf-8') as f:
     config.read_file(f)
 use_proxy = config.getboolean('Proxy', 'use_proxy', fallback=False)
 if use_proxy:
