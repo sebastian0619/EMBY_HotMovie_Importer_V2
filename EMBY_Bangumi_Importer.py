@@ -1,9 +1,10 @@
-﻿import os
+import os
 import urllib.parse
 from configparser import ConfigParser
 import base64
 import requests
 import re
+import csv
 from typing import List
 import sys
 import io
@@ -178,8 +179,9 @@ class Get_Detail(object):
                     print(f"集合 {box_id} 存在项目，开始清空...")
                     self.clear_collection(box_id)
                     print(f"集合 {box_id} 已被清空")
-                    emby_box = self.get_collection_items(box_id)
-                    if not emby_box or len(emby_box) == 0:
+                    # 更新 emby_box 的 box_movies 属性，而不是覆盖 emby_box
+                    emby_box.box_movies = self.get_emby_box_movie(box_id)
+                    if not emby_box.box_movies:
                         print(f"集合 {box_id} 清空成功，准备重新添加电影...")
                     else:
                         print(f"集合 {box_id} 清空失败，跳过添加电影")
@@ -254,7 +256,13 @@ class Get_Detail(object):
             for item in entry.get('items', []):
                 name = item.get('name_cn') or item.get('name')
                 name_mapping = {
-                    "7号房的礼物": "七号房的礼物"
+                    "7号房的礼物": "七号房的礼物",
+                    "秘密的偶像公主 RING篇": "秘密的偶像公主",
+                    "最强王图鉴 ～The Ultimate Tournament～": "最强王图鉴",
+                    "搞笑漫画日和GO": "搞笑漫画日和",
+                    "男女之间的友情存在吗？（不，不存在!!）": "男女之间的友情存在吗",
+                    "打了300年的史莱姆，不知不觉就练到了满级 ～其二～": "打了300年的史莱姆",
+                    "干杂活我乃最强～关于原英雄队伍的杂役人员，实际上除了战斗能力外全是SSS的故事～": "干杂活我乃最强"
                 }
                 name = name_mapping.get(name, name)
                 
