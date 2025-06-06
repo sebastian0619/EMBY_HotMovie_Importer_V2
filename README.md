@@ -2,7 +2,7 @@
 
 啥都不会，AI写的。 脚本大概能用，应该。。。
 
-在大佬的改良版上修改 [https://github.com/xuanqb/EMBY_HotMovie_Importer](https://github.com/xuanqb/EMBY_HotMovie_Importer) 实现
+写了个V1版，被大佬改良了一下， [https://github.com/xuanqb/EMBY_HotMovie_Importer](https://github.com/xuanqb/EMBY_HotMovie_Importer)  我又在他改良的基础上修改了一下才有这个项目，感谢开源
 
 + 2025年6月6日 新增豆列的爬取并创建合集
   ![image](docs/豆列.png)
