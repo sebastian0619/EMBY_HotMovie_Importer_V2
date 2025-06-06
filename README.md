@@ -4,6 +4,8 @@
 
 写了个V1版，被大佬改良了一下， [https://github.com/xuanqb/EMBY_HotMovie_Importer](https://github.com/xuanqb/EMBY_HotMovie_Importer)  我又在他改良的基础上修改了一下才有这个项目，感谢开源
 
++ 2025年6月4日 新增bangumi当季新番的爬取并创建合集
+  ![image](docs/bangumi.png)
 + 2025年6月6日 新增豆列的爬取并创建合集
   ![image](docs/豆列.png)
 + 增加了合集封面创建，会自动指定合集内的某一个项目的封面作为该合集的封面，而不是默认的那种多图拼接的封面。
