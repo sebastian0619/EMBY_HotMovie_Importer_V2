@@ -48,7 +48,7 @@ class Get_Detail(object):
         self.emby_user_id = config.get('Extra', 'emby_user_id', fallback=None)
         self.rss_ids = config.get('Collection', 'rss_ids').split(',')
         self.csv_file_path = config.get('Output', 'csv_file_path')  # 从配置文件中获取文件路径
-        # self.csv_mode = config.get('Output', 'csv_mode')  # 从配置文件中获取文件模式
+        self.csvout = config.getboolean('Output', 'csvout', fallback=False)
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36 Edg/101.0.1210.39"
         }
@@ -245,9 +245,10 @@ class Get_Detail(object):
                     print(f"电影 '{movie_name}' 不存在于 Emby 中，记录为未找到")
                     
                     # 将未找到的电影记录到 CSV 文件
-                    with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
-                        writer = csv.writer(file)
-                        writer.writerow([movie_name, movie_year, box_name])
+                    if self.csvout:
+                        with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
+                            writer = csv.writer(file)
+                            writer.writerow([movie_name, movie_year, box_name])
 
             print(f"更新完成: {box_name}")
 
