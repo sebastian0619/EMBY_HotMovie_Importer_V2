@@ -13,7 +13,7 @@ import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 config = ConfigParser()
-
+config.optionxform = str  # 保留 NameMapping 的键的大小写
 with open('config.conf', encoding='utf-8') as f:
     config.read_file(f)
 use_proxy = config.getboolean('Proxy', 'use_proxy', fallback=False)
@@ -56,7 +56,8 @@ class Get_Detail(object):
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36 Edg/101.0.1210.39"
         }
-
+        self.name_mapping = dict(config.items('NameMapping')) if config.has_section('NameMapping') else {}
+        # print(f"加载的名称映射: {self.name_mapping}")
     def search_emby_by_name_and_year(self, db_movie: DbMovie):
         name = db_movie.name
         yearParam = f"&Years={db_movie.year}" if db_movie.year else ""
@@ -236,57 +237,43 @@ class Get_Detail(object):
             print(f"更新完成: {box_name}")
 
     def get_douban_rss(self, rss_id):
-        rss_url = "https://api.bgm.tv/calendar"
-        response = requests.get(rss_url, headers=self.headers)
-        if response.status_code != 200:
-            print(f"无法获取 RSS 数据: {rss_url}")
-            return None
+            rss_url = "https://api.bgm.tv/calendar"
+            response = requests.get(rss_url, headers=self.headers)
+            if response.status_code != 200:
+                print(f"无法获取 RSS 数据: {rss_url}")
+                return None
 
-        try:
-            data = response.json()
-        except ValueError:
-            print(f"RSS 数据非 JSON 格式: {rss_url}")
-            return None
+            try:
+                data = response.json()
+            except ValueError:
+                print(f"RSS 数据非 JSON 格式: {rss_url}")
+                return None
 
-        movies = []
-        # 假设 JSON 数据是列表形式，每个元素包含 weekday 和 items
-        for entry in data:
-            # 使用 weekday.cn 作为合集标题
-            title = entry.get('weekday', {}).get('cn', '未知分类')
-            for item in entry.get('items', []):
-                name = item.get('name_cn') or item.get('name')
-                name_mapping = {
-                    "7号房的礼物": "七号房的礼物",
-                    "秘密的偶像公主 RING篇": "秘密的偶像公主",
-                    "最强王图鉴 ～The Ultimate Tournament～": "最强王图鉴",
-                    "搞笑漫画日和GO": "搞笑漫画日和",
-                    "男女之间的友情存在吗？（不，不存在!!）": "男女之间的友情存在吗",
-                    "打了300年的史莱姆，不知不觉就练到了满级 ～其二～": "打了300年的史莱姆",
-                    "干杂活我乃最强～关于原英雄队伍的杂役人员，实际上除了战斗能力外全是SSS的故事～": "干杂活我乃最强"
-                }
-                name = name_mapping.get(name, name)
-                
-                # 从 air_date 提取年份
-                year = None
-                air_date = item.get('air_date')
-                if air_date:
-                    year_match = re.search(r'(\d{4})', air_date)
-                    if year_match:
-                        year = year_match.group(1)
-                
-                # 类型映射：2 表示动画（视为 tv），其他情况默认 movie
-                media_type = 'tv' if item.get('type') == 2 else 'movie'
-                
-                if media_type == 'book':
-                    continue
-                if media_type == 'tv':
-                    name = re.sub(r" 第[一二三四五六七八九十\d]+季", "", name)
-                
-                movies.append(DbMovie(name, year, media_type))
-        
-        # 如果没有有效的标题，使用默认标题
-        db_movie = DbMovieRss(title if 'title' in locals() else '豆瓣合集', movies)
-        return db_movie
+            movies = []
+            for entry in data:
+                title = entry.get('weekday', {}).get('cn', '未知分类')
+                for item in entry.get('items', []):
+                    name = item.get('name_cn') or item.get('name')
+                    # 使用从配置文件读取的 name_mapping
+                    name = self.name_mapping.get(name, name)
+                    year = None
+                    air_date = item.get('air_date')
+                    if air_date:
+                        year_match = re.search(r'(\d{4})', air_date)
+                        if year_match:
+                            year = year_match.group(1)
+                    
+                    media_type = 'tv' if item.get('type') == 2 else 'movie'
+                    
+                    if media_type == 'book':
+                        continue
+                    if media_type == 'tv':
+                        name = re.sub(r" 第[一二三四五六七八九十\d]+季", "", name)
+                    
+                    movies.append(DbMovie(name, year, media_type))
+            
+            db_movie = DbMovieRss(title if 'title' in locals() else '豆瓣合集', movies)
+            return db_movie
 
 if __name__ == "__main__":
     gd = Get_Detail()
