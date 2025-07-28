@@ -15,6 +15,7 @@ import time
 import schedule
 from datetime import datetime
 from croniter import croniter
+import requests
 
 # 配置日志
 logging.basicConfig(
@@ -109,10 +110,36 @@ class ImporterController:
             logging.error(f"导入器运行失败 {importer_name}: {str(e)}")
             return False
     
+    def _check_emby_status(self) -> bool:
+        """检查 Emby 服务器状态"""
+        try:
+            emby_server = self.config.get('Server', 'emby_server')
+            emby_api_key = self.config.get('Server', 'emby_api_key')
+            
+            # 测试系统信息
+            system_url = f"{emby_server}/emby/System/Info?api_key={emby_api_key}"
+            response = requests.get(system_url, timeout=10)
+            
+            if response.status_code == 200:
+                logging.info("✅ Emby 服务器状态正常")
+                return True
+            else:
+                logging.error(f"❌ Emby 服务器状态异常: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"❌ 检查 Emby 状态失败: {str(e)}")
+            return False
+
     def run_all_importers(self) -> Dict[str, bool]:
         """运行所有启用的导入器"""
         results = {}
         logging.info("开始运行所有导入器")
+        
+        # 先检查 Emby 服务器状态
+        if not self._check_emby_status():
+            logging.error("Emby 服务器状态异常，跳过所有导入器")
+            return {name: False for name in self.importers.keys()}
         
         for importer_name in self.importers.keys():
             results[importer_name] = self.run_importer(importer_name)

@@ -88,25 +88,45 @@ class Get_Detail(object):
             ignore_played = "&Filters=IsUnplayed"
             emby_user_id = f"Users/{self.emby_user_id}"
         url = f"{self.emby_server}/emby/{emby_user_id}/Items?api_key={self.emby_api_key}{ignore_played}&Recursive=true&{includeItemTypes}&SearchTerm={name}{yearParam}"
-        try:
-            response = requests.get(url, timeout=30)
-            if response.status_code != 200:
-                logging.error(f"Emby API 请求失败: {response.status_code} - {response.text}")
+        
+        # 添加重试机制
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, timeout=30)
+                if response.status_code == 500 and "SQLitePCL.pretty.SQLiteException" in response.text:
+                    logging.warning(f"Emby 数据库异常，尝试重试 ({attempt + 1}/{max_retries}): {name}")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # 指数退避
+                        continue
+                    else:
+                        logging.error(f"Emby 数据库异常，已达到最大重试次数: {name}")
+                        return None
+                
+                if response.status_code != 200:
+                    logging.error(f"Emby API 请求失败: {response.status_code} - {response.text}")
+                    return None
+                
+                data = response.json()
+                if data.get('TotalRecordCount', 0) > 0:
+                    for item in data.get('Items', []):
+                        if item['Name'] == name:
+                            return item
+                    return None
+                else:
+                    return None
+                    
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Emby API 请求异常: {str(e)}")
                 return None
-            data = response.json()
-            if data.get('TotalRecordCount', 0) > 0:
-                for item in data.get('Items', []):
-                    if item['Name'] == name:
-                        return item
+            except ValueError as e:
+                logging.error(f"Emby API 响应JSON解析失败: {str(e)} - 响应内容: {response.text[:200]}")
                 return None
-            else:
-                return None
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Emby API 请求异常: {str(e)}")
-            return None
-        except ValueError as e:
-            logging.error(f"Emby API 响应JSON解析失败: {str(e)} - 响应内容: {response.text[:200]}")
-            return None
+        
+        return None
 
     def create_collection(self, collection_name, emby_id):
         encoded_collection_name = urllib.parse.quote(collection_name, safe='')
@@ -137,22 +157,92 @@ class Get_Detail(object):
         response.raise_for_status()
         return response.status_code == 204
 
+    def check_collection_exists_fallback(self, collection_name) -> EmbyBox:
+        """备用的合集检查方法，使用更简单的API调用"""
+        try:
+            # 使用更简单的API，不包含搜索词，减少数据库压力
+            url = f"{self.emby_server}/Items?IncludeItemTypes=BoxSet&Recursive=true&api_key={self.emby_api_key}"
+            response = requests.get(url, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                # 在返回的合集中查找匹配的名称
+                for item in data.get("Items", []):
+                    if item.get("Name") == collection_name and item.get("Type") == "BoxSet":
+                        emby_box_id = item['Id']
+                        return EmbyBox(emby_box_id, self.get_emby_box_movie(emby_box_id))
+                
+                # 如果没找到，返回空结果
+                return EmbyBox(None, [])
+            else:
+                logging.error(f"备用合集检查失败: {response.status_code}")
+                return EmbyBox(None, [])
+                
+        except Exception as e:
+            logging.error(f"备用合集检查异常: {str(e)}")
+            return EmbyBox(None, [])
+
     def check_collection_exists(self, collection_name) -> EmbyBox:
         encoded_collection_name = urllib.parse.quote(collection_name, safe='')
         url = f"{self.emby_server}/Items?IncludeItemTypes=BoxSet&Recursive=true&SearchTerm={encoded_collection_name}&api_key={self.emby_api_key}"
-        try:
-            response = requests.get(url, timeout=30)
-            if response.status_code == 200:
-                data = response.json()
-                if len(data["Items"]) > 0 and data["Items"][0]["Type"] == "BoxSet":
-                    emby_box_id = data["Items"][0]['Id']
-                    return EmbyBox(emby_box_id, self.get_emby_box_movie(emby_box_id))
-            else:
-                logging.error(f"检查合集存在性失败: {response.status_code} - {response.text}")
-        except requests.exceptions.RequestException as e:
-            logging.error(f"检查合集存在性请求异常: {str(e)}")
-        except ValueError as e:
-            logging.error(f"检查合集存在性响应JSON解析失败: {str(e)}")
+        
+        # 添加重试机制
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, timeout=30)
+                
+                # 检查是否是 SQLite 异常
+                if response.status_code == 500 and "SQLitePCL.pretty.SQLiteException" in response.text:
+                    logging.warning(f"Emby 数据库异常，尝试重试 ({attempt + 1}/{max_retries}): {collection_name}")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # 指数退避
+                        continue
+                    else:
+                        logging.error(f"Emby 数据库异常，已达到最大重试次数，使用备用方法: {collection_name}")
+                        # 使用备用方法
+                        return self.check_collection_exists_fallback(collection_name)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if len(data["Items"]) > 0 and data["Items"][0]["Type"] == "BoxSet":
+                        emby_box_id = data["Items"][0]['Id']
+                        return EmbyBox(emby_box_id, self.get_emby_box_movie(emby_box_id))
+                    else:
+                        # 合集不存在，返回空结果
+                        return EmbyBox(None, [])
+                else:
+                    logging.error(f"检查合集存在性失败: {response.status_code} - {response.text}")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        # 使用备用方法
+                        return self.check_collection_exists_fallback(collection_name)
+                        
+            except requests.exceptions.RequestException as e:
+                logging.error(f"检查合集存在性请求异常: {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                else:
+                    # 使用备用方法
+                    return self.check_collection_exists_fallback(collection_name)
+            except ValueError as e:
+                logging.error(f"检查合集存在性响应JSON解析失败: {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                else:
+                    # 使用备用方法
+                    return self.check_collection_exists_fallback(collection_name)
+        
         return EmbyBox(None, [])
 
     def get_emby_box_movie(self, box_id):
@@ -313,6 +403,9 @@ class Get_Detail(object):
                         with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
                             writer = csv.writer(file)
                             writer.writerow([movie_name, movie_year, box_name])
+                
+                # 添加请求间隔，减少对 Emby 服务器的压力
+                time.sleep(0.5)
 
             print(f"更新完成: {box_name}")
 
