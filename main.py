@@ -212,9 +212,16 @@ def main():
     if enable_schedule:
         logging.info("🔄 启动守护模式")
         
-        # 启动时立即执行一次
-        logging.info("🚀 程序启动，立即执行一次任务")
-        controller.run_scheduled_task()
+        # 启动时立即执行一次全量任务
+        logging.info("🚀 程序启动，立即执行一次全量任务")
+        try:
+            controller.run_all_importers()
+            logging.info("✅ 首次全量任务执行完成")
+        except Exception as e:
+            logging.error(f"❌ 首次全量任务执行失败: {str(e)}")
+        
+        # 进入守护模式
+        logging.info("🔄 进入守护模式，等待下次定时执行...")
         
         if cron_expression:
             logging.info(f"⏰ 使用cron表达式: {cron_expression}")
@@ -227,6 +234,7 @@ def main():
                 try:
                     now = datetime.now()
                     if now >= next_run:
+                        logging.info("⏰ 定时任务触发，开始执行...")
                         controller.run_scheduled_task()
                         next_run = cron.get_next(datetime)
                         logging.info(f"⏰ 下次运行时间: {next_run}")

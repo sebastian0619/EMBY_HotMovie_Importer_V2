@@ -1,21 +1,34 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Emby Bangumi导入器 - 重构版本
+使用统一的 utils.py API 接口
+"""
 import os
-import urllib.parse
-from configparser import ConfigParser
-import base64
-import requests
-import re
 import csv
+import logging
+import re
 from typing import List
-import sys
-import io
+from datetime import datetime
+from configparser import ConfigParser
+from utils import EmbyAPI, RSSHubAPI
 
-# 强制设置标准输出和标准错误为 UTF-8
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('emby_importer.log'),
+        logging.StreamHandler()
+    ]
+)
+
+# 加载配置
 config = ConfigParser()
-config.optionxform = str  # 保留 NameMapping 的键的大小写
 with open('config.conf', encoding='utf-8') as f:
     config.read_file(f)
+
+# 配置代理
 use_proxy = config.getboolean('Proxy', 'use_proxy', fallback=False)
 if use_proxy:
     os.environ['http_proxy'] = config.get('Proxy', 'http_proxy', fallback='http://127.0.0.1:7890')
@@ -25,256 +38,206 @@ else:
     os.environ.pop('https_proxy', None)
 
 class DbMovie:
+    """电影数据类"""
     def __init__(self, name, year, type):
         self.name = name
         self.year = year
         self.type = type
 
 class DbMovieRss:
+    """RSS电影数据类"""
     def __init__(self, title, movies: List[DbMovie]):
         self.title = title
         self.movies = movies
 
-class EmbyBox:
-    def __init__(self, box_id, box_movies):
-        self.box_id = box_id
-        self.box_movies = box_movies
-
-class Get_Detail(object):
+class Get_Detail:
+    """Bangumi导入器主类"""
+    
     def __init__(self):
         self.noexist = []
         self.dbmovies = {}
-        self.collection_id = ""
+        
+        # 从配置文件获取配置
         self.emby_server = config.get('Server', 'emby_server')
         self.emby_api_key = config.get('Server', 'emby_api_key')
         self.rsshub_server = config.get('Server', 'rsshub_server')
         self.ignore_played = config.getboolean('Extra', 'ignore_played', fallback=False)
         self.emby_user_id = config.get('Extra', 'emby_user_id', fallback=None)
         self.rss_ids = config.get('Collection', 'rss_ids').split(',')
-        self.csvout = config.getboolean('Output', 'csvout', fallback=False)
         self.csv_file_path = config.get('Output', 'csv_file_path')
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36 Edg/101.0.1210.39"
+        self.csvout = config.getboolean('Output', 'csvout', fallback=False)
+        
+        # 名称映射
+        self.name_mapping = {
+            "7号房的礼物": "七号房的礼物",
         }
-        self.name_mapping = dict(config.items('NameMapping')) if config.has_section('NameMapping') else {}
-        # print(f"加载的名称映射: {self.name_mapping}")
+        
+        # 初始化API客户端
+        self.emby_api = EmbyAPI(
+            emby_server=self.emby_server,
+            emby_api_key=self.emby_api_key,
+            emby_user_id=self.emby_user_id
+        )
+        self.rss_api = RSSHubAPI(rsshub_server=self.rsshub_server)
+    
     def search_emby_by_name_and_year(self, db_movie: DbMovie):
-        name = db_movie.name
-        yearParam = f"&Years={db_movie.year}" if db_movie.year else ""
-        includeItemTypes = "IncludeItemTypes=movie"
-        ignore_played = ""
-        emby_user_id = ""
-        if db_movie.type == "tv":
-            yearParam = ''
-            includeItemTypes = "IncludeItemTypes=Series"
-        if self.ignore_played:
-            ignore_played = "&Filters=IsUnplayed"
-            emby_user_id = f"Users/{self.emby_user_id}"
-        url = f"{self.emby_server}/emby/{emby_user_id}/Items?api_key={self.emby_api_key}{ignore_played}&Recursive=true&{includeItemTypes}&SearchTerm={name}{yearParam}"
-        response = requests.get(url)
-        data = response.json()
-        if response.status_code == 200 and data.get('TotalRecordCount', 0) > 0:
-            for item in data.get('Items', []):
-                if item['Name'] == name:
-                    return item
-            return None
-        else:
-            return None
-
+        """搜索Emby中的电影"""
+        item_type = "Series" if db_movie.type == "tv" else "Movie"
+        return self.emby_api.search_item_by_name(
+            name=db_movie.name,
+            item_type=item_type,
+            year=db_movie.year,
+            ignore_played=self.ignore_played
+        )
+    
     def create_collection(self, collection_name, emby_id):
-        encoded_collection_name = urllib.parse.quote(collection_name, safe='')
-        url = f"{self.emby_server}/emby/Collections?IsLocked=false&Name={encoded_collection_name}&Ids={emby_id}&api_key={self.emby_api_key}"
-        headers = {
-            "accept": "application/json"
-        }
-        response = requests.post(url, headers=headers)
-        if response.status_code == 200:
-            collection_id = response.json().get('Id')
-            print(f"成功创建合集: {collection_id}")
-            return collection_id
-        else:
-            print("创建合集失败.")
-            return None
-
+        """创建合集"""
+        return self.emby_api.create_collection(collection_name, emby_id)
+    
     def add_movie_to_collection(self, emby_id, collection_id):
-        url = f"{self.emby_server}/emby/Collections/{collection_id}/Items?Ids={emby_id}&api_key={self.emby_api_key}"
-        headers = {"accept": "*/*"}
-        response = requests.post(url, headers=headers)
-        response.raise_for_status()
-        return response.status_code == 204
-
-    def check_collection_exists(self, collection_name) -> EmbyBox:
-        encoded_collection_name = urllib.parse.quote(collection_name, safe='')
-        url = f"{self.emby_server}/Items?IncludeItemTypes=BoxSet&Recursive=true&SearchTerm={encoded_collection_name}&api_key={self.emby_api_key}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            if len(data["Items"]) > 0 and data["Items"][0]["Type"] == "BoxSet":
-                emby_box_id = data["Items"][0]['Id']
-                return EmbyBox(emby_box_id, self.get_emby_box_movie(emby_box_id))
-        return EmbyBox(None, [])
-
+        """添加电影到合集"""
+        return self.emby_api.add_item_to_collection(emby_id, collection_id)
+    
+    def check_collection_exists(self, collection_name):
+        """检查合集是否存在"""
+        collection = self.emby_api.check_collection_exists(collection_name)
+        if collection:
+            # 获取合集中的电影列表
+            items = self.emby_api.get_collection_items(collection['Id'])
+            return {
+                'box_id': collection['Id'],
+                'box_movies': items
+            }
+        return None
+    
     def get_emby_box_movie(self, box_id):
-        url = f"{self.emby_server}/emby/Items?api_key={self.emby_api_key}&ParentId={box_id}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            return [item["Name"] for item in data["Items"]]
-        return []
-
-    def get_collection_items(self, collection_id):
-        url = f"{self.emby_server}/emby/Items"
-        params = {
-            "ParentId": collection_id,
-            "Recursive": "false",
-            "Limit": 999,
-            "api_key": self.emby_api_key
-        }
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        return response.json().get("Items", [])
-
+        """获取合集电影列表"""
+        return self.emby_api.get_collection_items(box_id)
+    
     def clear_collection(self, collection_id):
-        items = self.get_collection_items(collection_id)
-        if not items:
-            print(f"集合 {collection_id} 中没有需要清空的项目")
-            return
-        item_ids = [item["Id"] for item in items]
-        url = f"{self.emby_server}/emby/Collections/{collection_id}/Items/Delete"
-        params = {
-            "Ids": ",".join(item_ids),
-            "api_key": self.emby_api_key
-        }
-        response = requests.post(url, params=params)
-        response.raise_for_status()
-        print(f"清空集合 {collection_id}，移除项目: {', '.join(item_ids)}")
-
+        """清空合集"""
+        return self.emby_api.clear_collection(collection_id)
+    
     def replace_cover_image(self, box_id, image_url):
-        response = requests.get(image_url)
-        image_content = response.content
-        base64_image = base64.b64encode(image_content).decode('utf-8')
-        url = f'{self.emby_server}/emby/Items/{box_id}/Images/Primary?api_key={self.emby_api_key}'
-        headers = {
-            'Content-Type': 'image/jpeg'
-        }
-        response = requests.post(url, headers=headers, data=base64_image)
-        if response.status_code == 204:
-            print(f'成功更新合集封面 {box_id}.')
-        else:
-            print(f'合集封面更新失败 {box_id}.')
-
+        """替换合集封面"""
+        return self.emby_api.replace_collection_cover(box_id, image_url)
+    
+    def get_bangumi_rss(self, rss_id):
+        """获取Bangumi RSS数据"""
+        result = self.rss_api.get_bangumi_calendar()
+        if not result:
+            return None
+        
+        # 转换为内部数据格式
+        movies = []
+        for movie_data in result['movies']:
+            # 应用名称映射
+            name = self.name_mapping.get(movie_data['name'], movie_data['name'])
+            movies.append(DbMovie(
+                name=name,
+                year=movie_data['year'],
+                type=movie_data['type']
+            ))
+        
+        return DbMovieRss(result['title'], movies)
+    
     def run(self):
-        for rss_id in self.rss_ids:
-            self.dbmovies = self.get_douban_rss(rss_id)
-            if not self.dbmovies or not self.dbmovies.movies:
-                print(f"RSS 数据获取失败或无有效电影: rss_id: {rss_id}")
-                continue
-            box_name = "✨当季新番"
-            print(f'更新 {box_name} rss_id: {rss_id}')
-            emby_box = self.check_collection_exists(box_name)
-            box_id = emby_box.box_id if emby_box else None
-
-            if box_id:
-                existing_items = self.get_collection_items(box_id)
-                if existing_items:
-                    print(f"集合 {box_id} 存在项目，开始清空...")
-                    self.clear_collection(box_id)
-                    print(f"集合 {box_id} 已被清空")
-                    # 更新 emby_box 的 box_movies 属性，而不是覆盖 emby_box
-                    emby_box.box_movies = self.get_emby_box_movie(box_id)
-                    if not emby_box.box_movies:
-                        print(f"集合 {box_id} 清空成功，准备重新添加电影...")
-                    else:
-                        print(f"集合 {box_id} 清空失败，跳过添加电影")
-                        continue
-                else:
-                    print(f"集合 {box_id} 中没有需要清空的项目，直接添加电影...")
-            else:
-                print(f"合集 {box_name} 不存在，开始创建...")
-                first_movie_data = None
-                for db_movie in self.dbmovies.movies:
-                    emby_data = self.search_emby_by_name_and_year(db_movie)
-                    if emby_data:
-                        first_movie_data = emby_data
-                        break
-                if not first_movie_data:
-                    print(f"创建合集失败，无法找到初始电影数据，跳过 {box_name}")
-                    continue
-                emby_id = first_movie_data["Id"]
-                box_id = self.create_collection(box_name, emby_id)
-                if not box_id:
-                    print(f"合集 {box_name} 创建失败，跳过")
-                    continue
-                print(f"合集 '{box_name}' 已创建成功，ID: {box_id}")
-                image_url = f"{self.emby_server}/emby/Items/{emby_id}/Images/Primary?api_key={self.emby_api_key}"
-                self.replace_cover_image(box_id, image_url)
-
-            for db_movie in self.dbmovies.movies:
-                movie_name = db_movie.name
-                movie_year = db_movie.year
-                if movie_name in emby_box.box_movies:
-                    print(f"番剧 '{movie_name}' 已在合集中，跳过")
-                    continue
-                emby_data = self.search_emby_by_name_and_year(db_movie)
-                if movie_name in self.noexist:
-                    print(f"番剧 '{movie_name}' 不存在，跳过")
-                    continue
-                if emby_data:
-                    emby_id = emby_data["Id"]
-                    added_to_collection = self.add_movie_to_collection(emby_id, box_id)
-                    if added_to_collection:
-                        print(f"番剧 '{movie_name}' 成功加入合集 '{box_name}'")
-                    else:
-                        print(f"番剧 '{movie_name}' 加入合集 '{box_name}' 失败")
-                else:
-                    self.noexist.append(movie_name)
-                    print(f"番剧 '{movie_name}' 不存在于 Emby 中，记录为未找到")
-                    # 将未找到的电影记录到 CSV 文件
-                    if self.csvout:
-                        with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
-                            writer = csv.writer(file)
-                            writer.writerow([movie_name, movie_year, box_name])
-            print(f"更新完成: {box_name}")
-
-    def get_douban_rss(self, rss_id):
-            rss_url = "https://api.bgm.tv/calendar"
-            response = requests.get(rss_url, headers=self.headers)
-            if response.status_code != 200:
-                print(f"无法获取 RSS 数据: {rss_url}")
-                return None
-
-            try:
-                data = response.json()
-            except ValueError:
-                print(f"RSS 数据非 JSON 格式: {rss_url}")
-                return None
-
-            movies = []
-            for entry in data:
-                title = entry.get('weekday', {}).get('cn', '未知分类')
-                for item in entry.get('items', []):
-                    name = item.get('name_cn') or item.get('name')
-                    # 使用从配置文件读取的 name_mapping
-                    name = self.name_mapping.get(name, name)
-                    year = None
-                    air_date = item.get('air_date')
-                    if air_date:
-                        year_match = re.search(r'(\d{4})', air_date)
-                        if year_match:
-                            year = year_match.group(1)
-                    
-                    media_type = 'tv' if item.get('type') == 2 else 'movie'
-                    
-                    if media_type == 'book':
-                        continue
-                    if media_type == 'tv':
-                        name = re.sub(r" 第[一二三四五六七八九十\d]+季", "", name)
-                    
-                    movies.append(DbMovie(name, year, media_type))
+        """运行导入器"""
+        logging.info("🚀 开始运行Bangumi导入器")
+        
+        # 获取Bangumi数据
+        self.dbmovies = self.get_bangumi_rss("calendar")
+        if not self.dbmovies or not self.dbmovies.movies:
+            logging.warning("⚠️ 未获取到Bangumi数据")
+            return
+        
+        box_name = self.dbmovies.title
+        logging.info(f"📋 合集名称: {box_name}")
+        logging.info(f"🎬 作品数量: {len(self.dbmovies.movies)}")
+        
+        # 检查合集是否存在
+        emby_box = self.check_collection_exists(box_name)
+        
+        if emby_box:
+            box_id = emby_box['box_id']
+            logging.info(f"✅ 合集已存在: {box_name} (ID: {box_id})")
             
-            db_movie = DbMovieRss(title if 'title' in locals() else '豆瓣合集', movies)
-            return db_movie
+            # 检查是否需要清空合集
+            if not emby_box['box_movies']:
+                logging.info(f"🗑️ 合集为空，准备重新添加作品...")
+            else:
+                logging.info(f"📋 合集包含 {len(emby_box['box_movies'])} 部作品")
+        else:
+            logging.info(f"🔨 合集不存在，开始创建: {box_name}")
+            
+            # 找到第一部作品作为初始作品
+            first_movie_data = None
+            for db_movie in self.dbmovies.movies:
+                emby_data = self.search_emby_by_name_and_year(db_movie)
+                if emby_data:
+                    first_movie_data = emby_data
+                    break
+            
+            if not first_movie_data:
+                logging.error(f"❌ 创建合集失败，无法找到初始作品: {box_name}")
+                return
+            
+            # 创建合集
+            box_id = self.create_collection(box_name, first_movie_data["Id"])
+            if not box_id:
+                logging.error(f"❌ 合集创建失败: {box_name}")
+                return
+            
+            logging.info(f"✅ 合集创建成功: {box_name} (ID: {box_id})")
+            
+            # 设置合集封面
+            image_url = f"{self.emby_server}/emby/Items/{first_movie_data['Id']}/Images/Primary?api_key={self.emby_api_key}"
+            self.replace_cover_image(box_id, image_url)
+            
+            # 初始化合集作品列表
+            emby_box = {'box_id': box_id, 'box_movies': []}
+        
+        # 添加作品到合集
+        added_count = 0
+        for db_movie in self.dbmovies.movies:
+            movie_name = db_movie.name
+            movie_year = db_movie.year
+            
+            # 检查作品是否已在合集中
+            if movie_name in emby_box['box_movies']:
+                logging.info(f"✅ 作品已在合集中，跳过: {movie_name}")
+                continue
+            
+            # 检查是否已记录为不存在
+            if movie_name in self.noexist:
+                logging.info(f"⚠️ 作品已记录为不存在，跳过: {movie_name}")
+                continue
+            
+            # 搜索Emby中的作品
+            emby_data = self.search_emby_by_name_and_year(db_movie)
+            if emby_data:
+                emby_id = emby_data["Id"]
+                # 添加到合集
+                if self.add_movie_to_collection(emby_id, box_id):
+                    logging.info(f"✅ 成功添加作品到合集: {movie_name}")
+                    emby_box['box_movies'].append(movie_name)  # 更新本地记录
+                    added_count += 1
+                else:
+                    logging.error(f"❌ 添加作品到合集失败: {movie_name}")
+            else:
+                self.noexist.append(movie_name)
+                logging.warning(f"⚠️ 作品不存在于Emby中: {movie_name}")
+                
+                # 记录到CSV文件
+                if self.csvout:
+                    with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
+                        writer = csv.writer(file)
+                        writer.writerow([movie_name, movie_year, box_name])
+        
+        logging.info(f"🎯 合集更新完成: {box_name}, 新增 {added_count} 部作品")
+        logging.info("✅ Bangumi导入器运行完成")
 
 if __name__ == "__main__":
+    logging.info("执行单次任务")
     gd = Get_Detail()
     gd.run()
