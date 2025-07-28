@@ -3,27 +3,17 @@ import urllib.parse
 from configparser import ConfigParser
 import base64
 import requests
-import feedparser
 import re
 import csv
-import time
-import schedule
-import logging
 from typing import List
-from datetime import datetime
-from croniter import croniter
+import sys
+import io
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('emby_importer.log'),
-        logging.StreamHandler()
-    ]
-)
-
+# 强制设置标准输出和标准错误为 UTF-8
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 config = ConfigParser()
+config.optionxform = str  # 保留 NameMapping 的键的大小写
 with open('config.conf', encoding='utf-8') as f:
     config.read_file(f)
 use_proxy = config.getboolean('Proxy', 'use_proxy', fallback=False)
@@ -33,11 +23,6 @@ if use_proxy:
 else:
     os.environ.pop('http_proxy', None)
     os.environ.pop('https_proxy', None)
-
-# 获取定时配置
-enable_schedule = config.getboolean('Schedule', 'enable_schedule', fallback=False)
-schedule_interval = config.getint('Schedule', 'schedule_interval', fallback=60)
-cron_expression = config.get('Schedule', 'cron', fallback='')
 
 class DbMovie:
     def __init__(self, name, year, type):
@@ -60,31 +45,29 @@ class Get_Detail(object):
         self.noexist = []
         self.dbmovies = {}
         self.collection_id = ""
-        # 获取配置项的值
         self.emby_server = config.get('Server', 'emby_server')
         self.emby_api_key = config.get('Server', 'emby_api_key')
         self.rsshub_server = config.get('Server', 'rsshub_server')
         self.ignore_played = config.getboolean('Extra', 'ignore_played', fallback=False)
         self.emby_user_id = config.get('Extra', 'emby_user_id', fallback=None)
         self.rss_ids = config.get('Collection', 'rss_ids').split(',')
-        self.csv_file_path = config.get('Output', 'csv_file_path')  # 从配置文件中获取文件路径
         self.csvout = config.getboolean('Output', 'csvout', fallback=False)
+        self.csv_file_path = config.get('Output', 'csv_file_path')
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36 Edg/101.0.1210.39"
         }
-
+        self.name_mapping = dict(config.items('NameMapping')) if config.has_section('NameMapping') else {}
+        # print(f"加载的名称映射: {self.name_mapping}")
     def search_emby_by_name_and_year(self, db_movie: DbMovie):
         name = db_movie.name
-        yearParam = f"&Years={db_movie.year}"
+        yearParam = f"&Years={db_movie.year}" if db_movie.year else ""
         includeItemTypes = "IncludeItemTypes=movie"
         ignore_played = ""
         emby_user_id = ""
-        # 删除季信息
         if db_movie.type == "tv":
             yearParam = ''
             includeItemTypes = "IncludeItemTypes=Series"
         if self.ignore_played:
-            # 不查询播放过的
             ignore_played = "&Filters=IsUnplayed"
             emby_user_id = f"Users/{self.emby_user_id}"
         url = f"{self.emby_server}/emby/{emby_user_id}/Items?api_key={self.emby_api_key}{ignore_played}&Recursive=true&{includeItemTypes}&SearchTerm={name}{yearParam}"
@@ -139,7 +122,6 @@ class Get_Detail(object):
             return [item["Name"] for item in data["Items"]]
         return []
 
-
     def get_collection_items(self, collection_id):
         url = f"{self.emby_server}/emby/Items"
         params = {
@@ -180,54 +162,36 @@ class Get_Detail(object):
             print(f'成功更新合集封面 {box_id}.')
         else:
             print(f'合集封面更新失败 {box_id}.')
-            
+
     def run(self):
-        # 遍历 RSS ID 获取电影信息
         for rss_id in self.rss_ids:
-            # 获取豆瓣 RSS 数据
             self.dbmovies = self.get_douban_rss(rss_id)
             if not self.dbmovies or not self.dbmovies.movies:
                 print(f"RSS 数据获取失败或无有效电影: rss_id: {rss_id}")
-                continue  # 跳过当前 RSS
-            box_name = "✨" + self.dbmovies.title
+                continue
+            box_name = "✨当季新番"
             print(f'更新 {box_name} rss_id: {rss_id}')
-            # 检查合集是否存在
             emby_box = self.check_collection_exists(box_name)
             box_id = emby_box.box_id if emby_box else None
 
             if box_id:
-                # 如果合集存在，清空合集内容
                 existing_items = self.get_collection_items(box_id)
                 if existing_items:
                     print(f"集合 {box_id} 存在项目，开始清空...")
                     self.clear_collection(box_id)
                     print(f"集合 {box_id} 已被清空")
-                    # 清空后重新获取合集的状态，确保清空成功
-                    emby_box = self.get_collection_items(box_id)
-                    if not emby_box or len(emby_box) == 0:
+                    # 更新 emby_box 的 box_movies 属性，而不是覆盖 emby_box
+                    emby_box.box_movies = self.get_emby_box_movie(box_id)
+                    if not emby_box.box_movies:
                         print(f"集合 {box_id} 清空成功，准备重新添加电影...")
-                        # 清空合集后，更新封面图
-                        first_movie_data = None
-                        # 遍历电影列表，找到第一个有效的 Emby 数据
-                        for db_movie in self.dbmovies.movies:
-                            emby_data = self.search_emby_by_name_and_year(db_movie)
-                            if emby_data:
-                                first_movie_data = emby_data
-                                break
-                        if first_movie_data:
-                            emby_id = first_movie_data["Id"]
-                            image_url = f"{self.emby_server}/emby/Items/{emby_id}/Images/Primary?api_key={self.emby_api_key}"
-                            self.replace_cover_image(box_id, image_url)
                     else:
                         print(f"集合 {box_id} 清空失败，跳过添加电影")
-                        continue  # 跳过添加操作
+                        continue
                 else:
                     print(f"集合 {box_id} 中没有需要清空的项目，直接添加电影...")
             else:
-                # 如果合集不存在，尝试创建
                 print(f"合集 {box_name} 不存在，开始创建...")
                 first_movie_data = None
-                # 遍历电影列表，找到第一个有效的 Emby 数据
                 for db_movie in self.dbmovies.movies:
                     emby_data = self.search_emby_by_name_and_year(db_movie)
                     if emby_data:
@@ -235,134 +199,82 @@ class Get_Detail(object):
                         break
                 if not first_movie_data:
                     print(f"创建合集失败，无法找到初始电影数据，跳过 {box_name}")
-                    continue  # 跳过当前 RSS
+                    continue
                 emby_id = first_movie_data["Id"]
                 box_id = self.create_collection(box_name, emby_id)
                 if not box_id:
                     print(f"合集 {box_name} 创建失败，跳过")
                     continue
                 print(f"合集 '{box_name}' 已创建成功，ID: {box_id}")
-                
-                # 创建合集后，立即更新封面图
                 image_url = f"{self.emby_server}/emby/Items/{emby_id}/Images/Primary?api_key={self.emby_api_key}"
                 self.replace_cover_image(box_id, image_url)
 
-
-
-            # 将电影逐一加入合集
             for db_movie in self.dbmovies.movies:
                 movie_name = db_movie.name
                 movie_year = db_movie.year
-                # 确保 emby_box 是有效对象并且含有 box_movies 属性
-                if isinstance(emby_box, dict) and 'box_movies' in emby_box:
-                    if movie_name in emby_box['box_movies']:
-                        print(f"电影 '{movie_name}' 已在合集中，跳过")
-                        continue
+                if movie_name in emby_box.box_movies:
+                    print(f"番剧 '{movie_name}' 已在合集中，跳过")
+                    continue
                 emby_data = self.search_emby_by_name_and_year(db_movie)
                 if movie_name in self.noexist:
-                    print(f"电影 '{movie_name}' 不存在，跳过")
+                    print(f"番剧 '{movie_name}' 不存在，跳过")
                     continue
                 if emby_data:
                     emby_id = emby_data["Id"]
                     added_to_collection = self.add_movie_to_collection(emby_id, box_id)
                     if added_to_collection:
-                        print(f"影视 '{movie_name}' 成功加入合集 '{box_name}'")
+                        print(f"番剧 '{movie_name}' 成功加入合集 '{box_name}'")
                     else:
-                        print(f"影视 '{movie_name}' 加入合集 '{box_name}' 失败")
+                        print(f"番剧 '{movie_name}' 加入合集 '{box_name}' 失败")
                 else:
                     self.noexist.append(movie_name)
-                    print(f"电影 '{movie_name}' 不存在于 Emby 中，记录为未找到")
-                    
+                    print(f"番剧 '{movie_name}' 不存在于 Emby 中，记录为未找到")
                     # 将未找到的电影记录到 CSV 文件
                     if self.csvout:
                         with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
                             writer = csv.writer(file)
                             writer.writerow([movie_name, movie_year, box_name])
-
             print(f"更新完成: {box_name}")
 
-
     def get_douban_rss(self, rss_id):
-        # 解析rss
-        rss_url = f"{self.rsshub_server}/douban/movie/weekly/{rss_id}"
-        # print(f"rss_url: {rss_url}")
-        feed = feedparser.parse(rss_url)
-        # 封装成对象
-        movies = []
-        for item in feed.entries:
-            name = item.title
-            # 豆瓣和TMDB的影片名有时候会不一样，导致明明库里有的却没有匹配上。
-            name_mapping = {
-                "7号房的礼物": "七号房的礼物"
-            }
-            name = name_mapping.get(name, name)
-            type = item.type
-            if type == 'book':
-                continue
-                # 删除季信息
-            if type == "tv":
-                name = re.sub(r" 第[一二三四五六七八九十\d]+季", "", name)
+            rss_url = "https://api.bgm.tv/calendar"
+            response = requests.get(rss_url, headers=self.headers)
+            if response.status_code != 200:
+                print(f"无法获取 RSS 数据: {rss_url}")
+                return None
 
-                
-            movies.append(DbMovie(name, item.year, type))
-        db_movie = DbMovieRss(feed.feed.title, movies)
-        return db_movie
+            try:
+                data = response.json()
+            except ValueError:
+                print(f"RSS 数据非 JSON 格式: {rss_url}")
+                return None
 
-def run_scheduled_task():
-    logging.info("开始执行定时任务")
-    try:
-        gd = Get_Detail()
-        gd.run()
-    except Exception as e:
-        logging.error(f"执行任务时发生错误: {str(e)}")
-    logging.info("定时任务执行完成")
-
-def main():
-    if enable_schedule:
-        logging.info("启动守护模式")
-        # 启动时立即执行一次
-        logging.info("程序启动，立即执行一次任务")
-        run_scheduled_task()
-        
-        if cron_expression:
-            logging.info(f"使用cron表达式: {cron_expression}")
-            # 使用croniter计算下次运行时间
-            cron = croniter(cron_expression, datetime.now())
-            next_run = cron.get_next(datetime)
-            logging.info(f"下次运行时间: {next_run}")
+            movies = []
+            for entry in data:
+                title = entry.get('weekday', {}).get('cn', '未知分类')
+                for item in entry.get('items', []):
+                    name = item.get('name_cn') or item.get('name')
+                    # 使用从配置文件读取的 name_mapping
+                    name = self.name_mapping.get(name, name)
+                    year = None
+                    air_date = item.get('air_date')
+                    if air_date:
+                        year_match = re.search(r'(\d{4})', air_date)
+                        if year_match:
+                            year = year_match.group(1)
+                    
+                    media_type = 'tv' if item.get('type') == 2 else 'movie'
+                    
+                    if media_type == 'book':
+                        continue
+                    if media_type == 'tv':
+                        name = re.sub(r" 第[一二三四五六七八九十\d]+季", "", name)
+                    
+                    movies.append(DbMovie(name, year, media_type))
             
-            while True:
-                try:
-                    now = datetime.now()
-                    if now >= next_run:
-                        run_scheduled_task()
-                        next_run = cron.get_next(datetime)
-                        logging.info(f"下次运行时间: {next_run}")
-                    time.sleep(30)  # 每30秒检查一次
-                except KeyboardInterrupt:
-                    logging.info("收到退出信号，程序退出")
-                    break
-                except Exception as e:
-                    logging.error(f"运行出错: {str(e)}")
-                    time.sleep(60)  # 出错后等待1分钟再继续
-        else:
-            logging.info(f"使用固定间隔: {schedule_interval}分钟")
-            schedule.every(schedule_interval).minutes.do(run_scheduled_task)
-            
-            while True:
-                try:
-                    schedule.run_pending()
-                    time.sleep(1)
-                except KeyboardInterrupt:
-                    logging.info("收到退出信号，程序退出")
-                    break
-                except Exception as e:
-                    logging.error(f"运行出错: {str(e)}")
-                    time.sleep(60)  # 出错后等待1分钟再继续
-    else:
-        logging.info("执行单次任务")
-        gd = Get_Detail()
-        gd.run()
+            db_movie = DbMovieRss(title if 'title' in locals() else '豆瓣合集', movies)
+            return db_movie
 
 if __name__ == "__main__":
-    main()
+    gd = Get_Detail()
+    gd.run()
