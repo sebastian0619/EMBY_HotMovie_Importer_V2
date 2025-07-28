@@ -165,7 +165,7 @@ class Get_Detail(object):
                     logging.error(f"❌ 获取 {item_type} 数据失败: {response.status_code}")
                     break
                 
-                time.sleep(0.1)  # 避免请求过快
+                # 移除延迟，提升速度
                 
             except Exception as e:
                 logging.error(f"❌ 获取 {item_type} 数据异常: {str(e)}")
@@ -247,8 +247,7 @@ class Get_Detail(object):
                     logging.warning(f"⚠️ Emby 数据库异常，尝试重试 ({attempt + 1}/{max_retries}): {name}")
                     logging.warning(f"🔍 错误详情: {response.text[:500]}")
                     if attempt < max_retries - 1:
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # 指数退避
+                        # 移除延迟，立即重试
                         continue
                     else:
                         logging.error(f"❌ Emby 数据库异常，已达到最大重试次数，使用备用搜索方法: {name}")
@@ -258,8 +257,7 @@ class Get_Detail(object):
                     logging.error(f"❌ Emby API 请求失败: {response.status_code}")
                     logging.error(f"🔍 错误响应: {response.text[:500]}")
                     if attempt < max_retries - 1:
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
+                        # 移除延迟，立即重试
                         continue
                     else:
                         return self.search_emby_by_name_and_year_fallback(db_movie)
@@ -281,8 +279,7 @@ class Get_Detail(object):
             except requests.exceptions.RequestException as e:
                 logging.error(f"❌ Emby API 请求异常: {str(e)}")
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
+                    # 移除延迟，立即重试
                     continue
                 else:
                     return self.search_emby_by_name_and_year_fallback(db_movie)
@@ -290,8 +287,7 @@ class Get_Detail(object):
                 logging.error(f"❌ Emby API 响应JSON解析失败: {str(e)}")
                 logging.error(f"🔍 响应内容: {response.text[:500]}")
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
+                    # 移除延迟，立即重试
                     continue
                 else:
                     return self.search_emby_by_name_and_year_fallback(db_movie)
@@ -430,8 +426,7 @@ class Get_Detail(object):
                     logging.warning(f"⚠️ Emby 数据库异常，尝试重试 ({attempt + 1}/{max_retries}): {collection_name}")
                     logging.warning(f"🔍 错误详情: {response.text[:500]}")
                     if attempt < max_retries - 1:
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # 指数退避
+                        # 移除延迟，立即重试
                         continue
                     else:
                         logging.error(f"❌ Emby 数据库异常，已达到最大重试次数，使用备用方法: {collection_name}")
@@ -460,8 +455,7 @@ class Get_Detail(object):
                     logging.error(f"❌ 检查合集存在性失败: {response.status_code}")
                     logging.error(f"🔍 错误响应: {response.text[:500]}")
                     if attempt < max_retries - 1:
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
+                        # 移除延迟，立即重试
                         continue
                     else:
                         # 使用备用方法
@@ -470,8 +464,7 @@ class Get_Detail(object):
             except requests.exceptions.RequestException as e:
                 logging.error(f"❌ 检查合集存在性请求异常: {str(e)}")
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
+                    # 移除延迟，立即重试
                     continue
                 else:
                     # 使用备用方法
@@ -480,8 +473,7 @@ class Get_Detail(object):
                 logging.error(f"❌ 检查合集存在性响应JSON解析失败: {str(e)}")
                 logging.error(f"🔍 响应内容: {response.text[:500]}")
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
+                    # 移除延迟，立即重试
                     continue
                 else:
                     # 使用备用方法
@@ -662,8 +654,7 @@ class Get_Detail(object):
                             writer = csv.writer(file)
                             writer.writerow([movie_name, movie_year, box_name])
                 
-                # 添加请求间隔，减少对 Emby 服务器的压力
-                time.sleep(0.5)
+                # 移除延迟，提升速度
 
             print(f"更新完成: {box_name}")
 
@@ -755,13 +746,13 @@ def main():
                         run_scheduled_task()
                         next_run = cron.get_next(datetime)
                         logging.info(f"下次运行时间: {next_run}")
-                    time.sleep(30)  # 每30秒检查一次
+                    time.sleep(5)  # 减少检查间隔，提升响应速度
                 except KeyboardInterrupt:
                     logging.info("收到退出信号，程序退出")
                     break
                 except Exception as e:
                     logging.error(f"运行出错: {str(e)}")
-                    time.sleep(60)  # 出错后等待1分钟再继续
+                    time.sleep(10)  # 减少错误恢复时间
         else:
             logging.info(f"使用固定间隔: {schedule_interval}分钟")
             schedule.every(schedule_interval).minutes.do(run_scheduled_task)
@@ -775,7 +766,7 @@ def main():
                     break
                 except Exception as e:
                     logging.error(f"运行出错: {str(e)}")
-                    time.sleep(60)  # 出错后等待1分钟再继续
+                    time.sleep(10)  # 减少错误恢复时间
     else:
         logging.info("执行单次任务")
         gd = Get_Detail()

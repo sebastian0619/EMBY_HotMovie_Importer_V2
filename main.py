@@ -143,8 +143,7 @@ class ImporterController:
         
         for importer_name in self.importers.keys():
             results[importer_name] = self.run_importer(importer_name)
-            # 在导入器之间添加短暂延迟，避免API限制
-            time.sleep(2)
+            # 移除延迟，提升速度
         
         # 统计结果
         success_count = sum(results.values())
@@ -196,13 +195,13 @@ def main():
                         controller.run_scheduled_task()
                         next_run = cron.get_next(datetime)
                         logging.info(f"下次运行时间: {next_run}")
-                    time.sleep(30)  # 每30秒检查一次
+                    time.sleep(5)  # 减少检查间隔，提升响应速度
                 except KeyboardInterrupt:
                     logging.info("收到退出信号，程序退出")
                     break
                 except Exception as e:
                     logging.error(f"运行出错: {str(e)}")
-                    time.sleep(60)  # 出错后等待1分钟再继续
+                    time.sleep(10)  # 减少错误恢复时间
         else:
             logging.info(f"使用固定间隔: {schedule_interval}分钟")
             schedule.every(schedule_interval).minutes.do(controller.run_scheduled_task)
@@ -216,7 +215,7 @@ def main():
                     break
                 except Exception as e:
                     logging.error(f"运行出错: {str(e)}")
-                    time.sleep(60)  # 出错后等待1分钟再继续
+                    time.sleep(10)  # 减少错误恢复时间
     else:
         logging.info("执行单次任务")
         controller.run_all_importers()
