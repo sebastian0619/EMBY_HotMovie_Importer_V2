@@ -73,6 +73,62 @@ class Get_Detail(object):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36 Edg/101.0.1210.39"
         }
 
+    def search_emby_by_name_and_year_fallback(self, db_movie: DbMovie):
+        """备用的电影搜索方法，不使用搜索词，减少数据库压力"""
+        name = db_movie.name
+        includeItemTypes = "IncludeItemTypes=movie"
+        ignore_played = ""
+        emby_user_id = ""
+        
+        # 删除季信息
+        if db_movie.type == "tv":
+            includeItemTypes = "IncludeItemTypes=Series"
+        if self.ignore_played:
+            # 不查询播放过的
+            ignore_played = "&Filters=IsUnplayed"
+            emby_user_id = f"Users/{self.emby_user_id}"
+        
+        # 使用更简单的API，不包含搜索词
+        url = f"{self.emby_server}/emby/{emby_user_id}/Items?api_key={self.emby_api_key}{ignore_played}&Recursive=true&{includeItemTypes}&Limit=1000"
+        
+        logging.info(f"🔄 使用备用方法搜索: {name} (类型: {db_movie.type}, 年份: {db_movie.year})")
+        logging.info(f"📡 备用搜索URL: {url}")
+        
+        try:
+            response = requests.get(url, timeout=30)
+            logging.info(f"📊 备用搜索响应状态码: {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                logging.info(f"📈 备用搜索找到 {data.get('TotalRecordCount', 0)} 个项目")
+                
+                # 在返回的项目中查找匹配的名称
+                for item in data.get('Items', []):
+                    item_name = item.get('Name', '')
+                    item_year = item.get('ProductionYear')
+                    
+                    # 检查名称匹配
+                    if item_name == name:
+                        # 如果指定了年份，也要检查年份
+                        if db_movie.year and item_year:
+                            if str(item_year) == str(db_movie.year):
+                                logging.info(f"✅ 备用方法找到匹配项目: {item_name} (年份: {item_year}, ID: {item.get('Id', 'N/A')})")
+                                return item
+                        else:
+                            # 没有指定年份，只匹配名称
+                            logging.info(f"✅ 备用方法找到匹配项目: {item_name} (ID: {item.get('Id', 'N/A')})")
+                            return item
+                
+                logging.info(f"ℹ️ 备用方法未找到匹配项目: {name}")
+                return None
+            else:
+                logging.error(f"❌ 备用搜索失败: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logging.error(f"❌ 备用搜索异常: {str(e)}")
+            return None
+
     def search_emby_by_name_and_year(self, db_movie: DbMovie):
         name = db_movie.name
         yearParam = f"&Years={db_movie.year}"
@@ -110,13 +166,18 @@ class Get_Detail(object):
                         retry_delay *= 2  # 指数退避
                         continue
                     else:
-                        logging.error(f"❌ Emby 数据库异常，已达到最大重试次数: {name}")
-                        return None
+                        logging.error(f"❌ Emby 数据库异常，已达到最大重试次数，使用备用搜索方法: {name}")
+                        return self.search_emby_by_name_and_year_fallback(db_movie)
                 
                 if response.status_code != 200:
                     logging.error(f"❌ Emby API 请求失败: {response.status_code}")
                     logging.error(f"🔍 错误响应: {response.text[:500]}")
-                    return None
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        return self.search_emby_by_name_and_year_fallback(db_movie)
                 
                 data = response.json()
                 logging.info(f"📈 找到 {data.get('TotalRecordCount', 0)} 个匹配项目")
@@ -134,11 +195,21 @@ class Get_Detail(object):
                     
             except requests.exceptions.RequestException as e:
                 logging.error(f"❌ Emby API 请求异常: {str(e)}")
-                return None
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                else:
+                    return self.search_emby_by_name_and_year_fallback(db_movie)
             except ValueError as e:
                 logging.error(f"❌ Emby API 响应JSON解析失败: {str(e)}")
                 logging.error(f"🔍 响应内容: {response.text[:500]}")
-                return None
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                else:
+                    return self.search_emby_by_name_and_year_fallback(db_movie)
         
         return None
 
@@ -189,24 +260,37 @@ class Get_Detail(object):
         try:
             # 使用更简单的API，不包含搜索词，减少数据库压力
             url = f"{self.emby_server}/Items?IncludeItemTypes=BoxSet&Recursive=true&api_key={self.emby_api_key}"
+            logging.info(f"🔄 使用备用方法检查合集: {collection_name}")
+            logging.info(f"📡 备用方法请求URL: {url}")
+            
             response = requests.get(url, timeout=30)
+            logging.info(f"📊 备用方法响应状态码: {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()
+                logging.info(f"📈 备用方法找到 {len(data.get('Items', []))} 个合集")
+                
                 # 在返回的合集中查找匹配的名称
                 for item in data.get("Items", []):
-                    if item.get("Name") == collection_name and item.get("Type") == "BoxSet":
+                    item_name = item.get("Name", "")
+                    item_type = item.get("Type", "")
+                    logging.info(f"🔍 检查合集: {item_name} (类型: {item_type})")
+                    
+                    if item_name == collection_name and item_type == "BoxSet":
                         emby_box_id = item['Id']
+                        logging.info(f"✅ 备用方法找到匹配合集: {item_name} (ID: {emby_box_id})")
                         return EmbyBox(emby_box_id, self.get_emby_box_movie(emby_box_id))
                 
                 # 如果没找到，返回空结果
+                logging.info(f"ℹ️ 备用方法未找到匹配的合集: {collection_name}")
                 return EmbyBox(None, [])
             else:
-                logging.error(f"备用合集检查失败: {response.status_code}")
+                logging.error(f"❌ 备用合集检查失败: {response.status_code}")
+                logging.error(f"🔍 备用方法错误响应: {response.text[:500]}")
                 return EmbyBox(None, [])
                 
         except Exception as e:
-            logging.error(f"备用合集检查异常: {str(e)}")
+            logging.error(f"❌ 备用合集检查异常: {str(e)}")
             return EmbyBox(None, [])
 
     def check_collection_exists(self, collection_name) -> EmbyBox:
@@ -243,14 +327,20 @@ class Get_Detail(object):
                     data = response.json()
                     logging.info(f"📈 找到 {len(data.get('Items', []))} 个合集")
                     
-                    if len(data["Items"]) > 0 and data["Items"][0]["Type"] == "BoxSet":
-                        emby_box_id = data["Items"][0]['Id']
-                        logging.info(f"✅ 找到匹配合集: {data['Items'][0]['Name']} (ID: {emby_box_id})")
-                        return EmbyBox(emby_box_id, self.get_emby_box_movie(emby_box_id))
-                    else:
-                        logging.info(f"ℹ️ 未找到匹配的合集: {collection_name}")
-                        # 合集不存在，返回空结果
-                        return EmbyBox(None, [])
+                    # 修复逻辑：检查所有返回的合集，而不是只看第一个
+                    for item in data.get("Items", []):
+                        item_name = item.get("Name", "")
+                        item_type = item.get("Type", "")
+                        logging.info(f"🔍 主方法检查合集: {item_name} (类型: {item_type})")
+                        
+                        if item_name == collection_name and item_type == "BoxSet":
+                            emby_box_id = item['Id']
+                            logging.info(f"✅ 主方法找到匹配合集: {item_name} (ID: {emby_box_id})")
+                            return EmbyBox(emby_box_id, self.get_emby_box_movie(emby_box_id))
+                    
+                    # 如果没找到匹配的合集
+                    logging.info(f"ℹ️ 主方法未找到匹配的合集: {collection_name}")
+                    return EmbyBox(None, [])
                 else:
                     logging.error(f"❌ 检查合集存在性失败: {response.status_code}")
                     logging.error(f"🔍 错误响应: {response.text[:500]}")
