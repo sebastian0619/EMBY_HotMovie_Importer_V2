@@ -12,7 +12,7 @@ import io
 import time
 from datetime import datetime
 
-print("开始获取RSS条目.....")
+# 移除重复的日志输出
 # 强制设置标准输出和标准错误为 UTF-8
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
