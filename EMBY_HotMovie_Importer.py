@@ -7,11 +7,9 @@ import feedparser
 import re
 import csv
 import time
-import schedule
 import logging
 from typing import List
 from datetime import datetime
-from croniter import croniter
 
 # 配置日志
 logging.basicConfig(
@@ -34,10 +32,7 @@ else:
     os.environ.pop('http_proxy', None)
     os.environ.pop('https_proxy', None)
 
-# 获取定时配置
-enable_schedule = config.getboolean('Schedule', 'enable_schedule', fallback=False)
-schedule_interval = config.getint('Schedule', 'schedule_interval', fallback=60)
-cron_expression = config.get('Schedule', 'cron', fallback='')
+
 
 class DbMovie:
     def __init__(self, name, year, type):
@@ -716,61 +711,7 @@ class Get_Detail(object):
             logging.error(f"RSS连接测试失败: {str(e)}")
             return False
 
-def run_scheduled_task():
-    logging.info("开始执行定时任务")
-    try:
-        gd = Get_Detail()
-        gd.run()
-    except Exception as e:
-        logging.error(f"执行任务时发生错误: {str(e)}")
-    logging.info("定时任务执行完成")
-
-def main():
-    if enable_schedule:
-        logging.info("启动守护模式")
-        # 启动时立即执行一次
-        logging.info("程序启动，立即执行一次任务")
-        run_scheduled_task()
-        
-        if cron_expression:
-            logging.info(f"使用cron表达式: {cron_expression}")
-            # 使用croniter计算下次运行时间
-            cron = croniter(cron_expression, datetime.now())
-            next_run = cron.get_next(datetime)
-            logging.info(f"下次运行时间: {next_run}")
-            
-            while True:
-                try:
-                    now = datetime.now()
-                    if now >= next_run:
-                        run_scheduled_task()
-                        next_run = cron.get_next(datetime)
-                        logging.info(f"下次运行时间: {next_run}")
-                    time.sleep(5)  # 减少检查间隔，提升响应速度
-                except KeyboardInterrupt:
-                    logging.info("收到退出信号，程序退出")
-                    break
-                except Exception as e:
-                    logging.error(f"运行出错: {str(e)}")
-                    time.sleep(10)  # 减少错误恢复时间
-        else:
-            logging.info(f"使用固定间隔: {schedule_interval}分钟")
-            schedule.every(schedule_interval).minutes.do(run_scheduled_task)
-            
-            while True:
-                try:
-                    schedule.run_pending()
-                    time.sleep(1)
-                except KeyboardInterrupt:
-                    logging.info("收到退出信号，程序退出")
-                    break
-                except Exception as e:
-                    logging.error(f"运行出错: {str(e)}")
-                    time.sleep(10)  # 减少错误恢复时间
-    else:
-        logging.info("执行单次任务")
-        gd = Get_Detail()
-        gd.run()
-
 if __name__ == "__main__":
-    main()
+    logging.info("执行单次任务")
+    gd = Get_Detail()
+    gd.run()
