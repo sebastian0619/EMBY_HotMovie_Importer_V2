@@ -88,14 +88,24 @@ class Get_Detail(object):
             ignore_played = "&Filters=IsUnplayed"
             emby_user_id = f"Users/{self.emby_user_id}"
         url = f"{self.emby_server}/emby/{emby_user_id}/Items?api_key={self.emby_api_key}{ignore_played}&Recursive=true&{includeItemTypes}&SearchTerm={name}{yearParam}"
-        response = requests.get(url)
-        data = response.json()
-        if response.status_code == 200 and data.get('TotalRecordCount', 0) > 0:
-            for item in data.get('Items', []):
-                if item['Name'] == name:
-                    return item
+        try:
+            response = requests.get(url, timeout=30)
+            if response.status_code != 200:
+                logging.error(f"Emby API 请求失败: {response.status_code} - {response.text}")
+                return None
+            data = response.json()
+            if data.get('TotalRecordCount', 0) > 0:
+                for item in data.get('Items', []):
+                    if item['Name'] == name:
+                        return item
+                return None
+            else:
+                return None
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Emby API 请求异常: {str(e)}")
             return None
-        else:
+        except ValueError as e:
+            logging.error(f"Emby API 响应JSON解析失败: {str(e)} - 响应内容: {response.text[:200]}")
             return None
 
     def create_collection(self, collection_name, emby_id):
@@ -104,13 +114,20 @@ class Get_Detail(object):
         headers = {
             "accept": "application/json"
         }
-        response = requests.post(url, headers=headers)
-        if response.status_code == 200:
-            collection_id = response.json().get('Id')
-            print(f"成功创建合集: {collection_id}")
-            return collection_id
-        else:
-            print("创建合集失败.")
+        try:
+            response = requests.post(url, headers=headers, timeout=30)
+            if response.status_code == 200:
+                collection_id = response.json().get('Id')
+                print(f"成功创建合集: {collection_id}")
+                return collection_id
+            else:
+                print(f"创建合集失败: {response.status_code} - {response.text}")
+                return None
+        except requests.exceptions.RequestException as e:
+            print(f"创建合集请求异常: {str(e)}")
+            return None
+        except ValueError as e:
+            print(f"创建合集响应JSON解析失败: {str(e)} - 响应内容: {response.text[:200]}")
             return None
 
     def add_movie_to_collection(self, emby_id, collection_id):
@@ -123,20 +140,34 @@ class Get_Detail(object):
     def check_collection_exists(self, collection_name) -> EmbyBox:
         encoded_collection_name = urllib.parse.quote(collection_name, safe='')
         url = f"{self.emby_server}/Items?IncludeItemTypes=BoxSet&Recursive=true&SearchTerm={encoded_collection_name}&api_key={self.emby_api_key}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            if len(data["Items"]) > 0 and data["Items"][0]["Type"] == "BoxSet":
-                emby_box_id = data["Items"][0]['Id']
-                return EmbyBox(emby_box_id, self.get_emby_box_movie(emby_box_id))
+        try:
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                if len(data["Items"]) > 0 and data["Items"][0]["Type"] == "BoxSet":
+                    emby_box_id = data["Items"][0]['Id']
+                    return EmbyBox(emby_box_id, self.get_emby_box_movie(emby_box_id))
+            else:
+                logging.error(f"检查合集存在性失败: {response.status_code} - {response.text}")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"检查合集存在性请求异常: {str(e)}")
+        except ValueError as e:
+            logging.error(f"检查合集存在性响应JSON解析失败: {str(e)}")
         return EmbyBox(None, [])
 
     def get_emby_box_movie(self, box_id):
         url = f"{self.emby_server}/emby/Items?api_key={self.emby_api_key}&ParentId={box_id}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            return [item["Name"] for item in data["Items"]]
+        try:
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                return [item["Name"] for item in data["Items"]]
+            else:
+                logging.error(f"获取合集电影列表失败: {response.status_code} - {response.text}")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"获取合集电影列表请求异常: {str(e)}")
+        except ValueError as e:
+            logging.error(f"获取合集电影列表响应JSON解析失败: {str(e)}")
         return []
 
 
@@ -184,6 +215,10 @@ class Get_Detail(object):
     def run(self):
         # 遍历 RSS ID 获取电影信息
         for rss_id in self.rss_ids:
+            # 先测试RSS连接
+            if not self.test_rss_connection(rss_id):
+                logging.error(f"RSS连接测试失败，跳过处理: {rss_id}")
+                continue
             # 获取豆瓣 RSS 数据
             self.dbmovies = self.get_douban_rss(rss_id)
             if not self.dbmovies or not self.dbmovies.movies:
@@ -285,28 +320,59 @@ class Get_Detail(object):
     def get_douban_rss(self, rss_id):
         # 解析rss
         rss_url = f"{self.rsshub_server}/douban/movie/weekly/{rss_id}"
-        # print(f"rss_url: {rss_url}")
-        feed = feedparser.parse(rss_url)
-        # 封装成对象
-        movies = []
-        for item in feed.entries:
-            name = item.title
-            # 豆瓣和TMDB的影片名有时候会不一样，导致明明库里有的却没有匹配上。
-            name_mapping = {
-                "7号房的礼物": "七号房的礼物"
-            }
-            name = name_mapping.get(name, name)
-            type = item.type
-            if type == 'book':
-                continue
-                # 删除季信息
-            if type == "tv":
-                name = re.sub(r" 第[一二三四五六七八九十\d]+季", "", name)
+        logging.info(f"正在获取RSS数据: {rss_url}")
+        try:
+            feed = feedparser.parse(rss_url)
+            if not feed.entries:
+                logging.error(f"RSS数据为空或解析失败: {rss_url}")
+                return None
+            # 封装成对象
+            movies = []
+            for item in feed.entries:
+                name = item.title
+                # 豆瓣和TMDB的影片名有时候会不一样，导致明明库里有的却没有匹配上。
+                name_mapping = {
+                    "7号房的礼物": "七号房的礼物"
+                }
+                name = name_mapping.get(name, name)
+                type = item.type
+                if type == 'book':
+                    continue
+                    # 删除季信息
+                if type == "tv":
+                    name = re.sub(r" 第[一二三四五六七八九十\d]+季", "", name)
 
-                
-            movies.append(DbMovie(name, item.year, type))
-        db_movie = DbMovieRss(feed.feed.title, movies)
-        return db_movie
+                    
+                movies.append(DbMovie(name, item.year, type))
+            db_movie = DbMovieRss(feed.feed.title, movies)
+            logging.info(f"成功获取RSS数据，共{len(movies)}部电影")
+            return db_movie
+        except Exception as e:
+            logging.error(f"获取RSS数据失败: {str(e)} - URL: {rss_url}")
+            return None
+
+    def test_rss_connection(self, rss_id):
+        """测试RSS连接是否正常"""
+        rss_url = f"{self.rsshub_server}/douban/movie/weekly/{rss_id}"
+        logging.info(f"测试RSS连接: {rss_url}")
+        try:
+            response = requests.get(rss_url, timeout=30)
+            logging.info(f"RSS响应状态码: {response.status_code}")
+            logging.info(f"RSS响应内容前200字符: {response.text[:200]}")
+            if response.status_code == 200:
+                feed = feedparser.parse(rss_url)
+                if feed.entries:
+                    logging.info(f"RSS解析成功，找到{len(feed.entries)}个条目")
+                    return True
+                else:
+                    logging.error("RSS解析成功但无条目")
+                    return False
+            else:
+                logging.error(f"RSS请求失败: {response.status_code}")
+                return False
+        except Exception as e:
+            logging.error(f"RSS连接测试失败: {str(e)}")
+            return False
 
 def run_scheduled_task():
     logging.info("开始执行定时任务")

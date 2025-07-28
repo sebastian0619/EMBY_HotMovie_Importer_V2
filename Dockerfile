@@ -22,4 +22,4 @@ RUN adduser --disabled-password --gecos "" appuser
 RUN chown -R appuser:appuser /app
 USER appuser
 
-CMD ["python", "EMBY_HotMovie_Importer.py"] 
+CMD ["python", "main.py"] 
