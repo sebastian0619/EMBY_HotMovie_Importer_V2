@@ -89,41 +89,55 @@ class Get_Detail(object):
             emby_user_id = f"Users/{self.emby_user_id}"
         url = f"{self.emby_server}/emby/{emby_user_id}/Items?api_key={self.emby_api_key}{ignore_played}&Recursive=true&{includeItemTypes}&SearchTerm={name}{yearParam}"
         
+        logging.info(f"🔍 搜索电影: {name} (类型: {db_movie.type}, 年份: {db_movie.year})")
+        logging.info(f"📡 请求URL: {url}")
+        
         # 添加重试机制
         max_retries = 3
         retry_delay = 2
         
         for attempt in range(max_retries):
             try:
+                logging.info(f"🔄 尝试第 {attempt + 1} 次请求...")
                 response = requests.get(url, timeout=30)
+                logging.info(f"📊 响应状态码: {response.status_code}")
+                
                 if response.status_code == 500 and "SQLitePCL.pretty.SQLiteException" in response.text:
-                    logging.warning(f"Emby 数据库异常，尝试重试 ({attempt + 1}/{max_retries}): {name}")
+                    logging.warning(f"⚠️ Emby 数据库异常，尝试重试 ({attempt + 1}/{max_retries}): {name}")
+                    logging.warning(f"🔍 错误详情: {response.text[:500]}")
                     if attempt < max_retries - 1:
                         time.sleep(retry_delay)
                         retry_delay *= 2  # 指数退避
                         continue
                     else:
-                        logging.error(f"Emby 数据库异常，已达到最大重试次数: {name}")
+                        logging.error(f"❌ Emby 数据库异常，已达到最大重试次数: {name}")
                         return None
                 
                 if response.status_code != 200:
-                    logging.error(f"Emby API 请求失败: {response.status_code} - {response.text}")
+                    logging.error(f"❌ Emby API 请求失败: {response.status_code}")
+                    logging.error(f"🔍 错误响应: {response.text[:500]}")
                     return None
                 
                 data = response.json()
+                logging.info(f"📈 找到 {data.get('TotalRecordCount', 0)} 个匹配项目")
+                
                 if data.get('TotalRecordCount', 0) > 0:
                     for item in data.get('Items', []):
                         if item['Name'] == name:
+                            logging.info(f"✅ 找到匹配电影: {item['Name']} (ID: {item.get('Id', 'N/A')})")
                             return item
+                    logging.warning(f"⚠️ 未找到完全匹配的电影: {name}")
                     return None
                 else:
+                    logging.info(f"ℹ️ 未找到任何匹配的电影: {name}")
                     return None
                     
             except requests.exceptions.RequestException as e:
-                logging.error(f"Emby API 请求异常: {str(e)}")
+                logging.error(f"❌ Emby API 请求异常: {str(e)}")
                 return None
             except ValueError as e:
-                logging.error(f"Emby API 响应JSON解析失败: {str(e)} - 响应内容: {response.text[:200]}")
+                logging.error(f"❌ Emby API 响应JSON解析失败: {str(e)}")
+                logging.error(f"🔍 响应内容: {response.text[:500]}")
                 return None
         
         return None
@@ -134,19 +148,32 @@ class Get_Detail(object):
         headers = {
             "accept": "application/json"
         }
+        
+        logging.info(f"🔨 创建合集: {collection_name}")
+        logging.info(f"📡 请求URL: {url}")
+        logging.info(f"🎬 初始电影ID: {emby_id}")
+        
         try:
             response = requests.post(url, headers=headers, timeout=30)
+            logging.info(f"📊 响应状态码: {response.status_code}")
+            
             if response.status_code == 200:
                 collection_id = response.json().get('Id')
+                logging.info(f"✅ 成功创建合集: {collection_id}")
                 print(f"成功创建合集: {collection_id}")
                 return collection_id
             else:
+                logging.error(f"❌ 创建合集失败: {response.status_code}")
+                logging.error(f"🔍 错误响应: {response.text[:500]}")
                 print(f"创建合集失败: {response.status_code} - {response.text}")
                 return None
         except requests.exceptions.RequestException as e:
+            logging.error(f"❌ 创建合集请求异常: {str(e)}")
             print(f"创建合集请求异常: {str(e)}")
             return None
         except ValueError as e:
+            logging.error(f"❌ 创建合集响应JSON解析失败: {str(e)}")
+            logging.error(f"🔍 响应内容: {response.text[:500]}")
             print(f"创建合集响应JSON解析失败: {str(e)} - 响应内容: {response.text[:200]}")
             return None
 
@@ -186,36 +213,47 @@ class Get_Detail(object):
         encoded_collection_name = urllib.parse.quote(collection_name, safe='')
         url = f"{self.emby_server}/Items?IncludeItemTypes=BoxSet&Recursive=true&SearchTerm={encoded_collection_name}&api_key={self.emby_api_key}"
         
+        logging.info(f"🔍 检查合集是否存在: {collection_name}")
+        logging.info(f"📡 请求URL: {url}")
+        
         # 添加重试机制
         max_retries = 3
         retry_delay = 2
         
         for attempt in range(max_retries):
             try:
+                logging.info(f"🔄 尝试第 {attempt + 1} 次检查合集...")
                 response = requests.get(url, timeout=30)
+                logging.info(f"📊 响应状态码: {response.status_code}")
                 
                 # 检查是否是 SQLite 异常
                 if response.status_code == 500 and "SQLitePCL.pretty.SQLiteException" in response.text:
-                    logging.warning(f"Emby 数据库异常，尝试重试 ({attempt + 1}/{max_retries}): {collection_name}")
+                    logging.warning(f"⚠️ Emby 数据库异常，尝试重试 ({attempt + 1}/{max_retries}): {collection_name}")
+                    logging.warning(f"🔍 错误详情: {response.text[:500]}")
                     if attempt < max_retries - 1:
                         time.sleep(retry_delay)
                         retry_delay *= 2  # 指数退避
                         continue
                     else:
-                        logging.error(f"Emby 数据库异常，已达到最大重试次数，使用备用方法: {collection_name}")
+                        logging.error(f"❌ Emby 数据库异常，已达到最大重试次数，使用备用方法: {collection_name}")
                         # 使用备用方法
                         return self.check_collection_exists_fallback(collection_name)
                 
                 if response.status_code == 200:
                     data = response.json()
+                    logging.info(f"📈 找到 {len(data.get('Items', []))} 个合集")
+                    
                     if len(data["Items"]) > 0 and data["Items"][0]["Type"] == "BoxSet":
                         emby_box_id = data["Items"][0]['Id']
+                        logging.info(f"✅ 找到匹配合集: {data['Items'][0]['Name']} (ID: {emby_box_id})")
                         return EmbyBox(emby_box_id, self.get_emby_box_movie(emby_box_id))
                     else:
+                        logging.info(f"ℹ️ 未找到匹配的合集: {collection_name}")
                         # 合集不存在，返回空结果
                         return EmbyBox(None, [])
                 else:
-                    logging.error(f"检查合集存在性失败: {response.status_code} - {response.text}")
+                    logging.error(f"❌ 检查合集存在性失败: {response.status_code}")
+                    logging.error(f"🔍 错误响应: {response.text[:500]}")
                     if attempt < max_retries - 1:
                         time.sleep(retry_delay)
                         retry_delay *= 2
@@ -225,7 +263,7 @@ class Get_Detail(object):
                         return self.check_collection_exists_fallback(collection_name)
                         
             except requests.exceptions.RequestException as e:
-                logging.error(f"检查合集存在性请求异常: {str(e)}")
+                logging.error(f"❌ 检查合集存在性请求异常: {str(e)}")
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay)
                     retry_delay *= 2
@@ -234,7 +272,8 @@ class Get_Detail(object):
                     # 使用备用方法
                     return self.check_collection_exists_fallback(collection_name)
             except ValueError as e:
-                logging.error(f"检查合集存在性响应JSON解析失败: {str(e)}")
+                logging.error(f"❌ 检查合集存在性响应JSON解析失败: {str(e)}")
+                logging.error(f"🔍 响应内容: {response.text[:500]}")
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay)
                     retry_delay *= 2
@@ -305,31 +344,39 @@ class Get_Detail(object):
     def run(self):
         # 遍历 RSS ID 获取电影信息
         for rss_id in self.rss_ids:
+            logging.info(f"🚀 开始处理 RSS: {rss_id}")
+            
             # 先测试RSS连接
             if not self.test_rss_connection(rss_id):
-                logging.error(f"RSS连接测试失败，跳过处理: {rss_id}")
+                logging.error(f"❌ RSS连接测试失败，跳过处理: {rss_id}")
                 continue
             # 获取豆瓣 RSS 数据
             self.dbmovies = self.get_douban_rss(rss_id)
             if not self.dbmovies or not self.dbmovies.movies:
-                print(f"RSS 数据获取失败或无有效电影: rss_id: {rss_id}")
+                logging.error(f"❌ RSS 数据获取失败或无有效电影: rss_id: {rss_id}")
                 continue  # 跳过当前 RSS
             box_name = "✨" + self.dbmovies.title
+            logging.info(f"📺 更新合集: {box_name} (rss_id: {rss_id})")
             print(f'更新 {box_name} rss_id: {rss_id}')
+            
             # 检查合集是否存在
+            logging.info(f"🔍 检查合集是否存在: {box_name}")
             emby_box = self.check_collection_exists(box_name)
             box_id = emby_box.box_id if emby_box else None
 
             if box_id:
+                logging.info(f"✅ 合集已存在，ID: {box_id}")
                 # 如果合集存在，清空合集内容
                 existing_items = self.get_collection_items(box_id)
                 if existing_items:
+                    logging.info(f"🗑️ 合集 {box_id} 存在 {len(existing_items)} 个项目，开始清空...")
                     print(f"集合 {box_id} 存在项目，开始清空...")
                     self.clear_collection(box_id)
                     print(f"集合 {box_id} 已被清空")
                     # 清空后重新获取合集的状态，确保清空成功
                     emby_box = self.get_collection_items(box_id)
                     if not emby_box or len(emby_box) == 0:
+                        logging.info(f"✅ 合集 {box_id} 清空成功，准备重新添加电影...")
                         print(f"集合 {box_id} 清空成功，准备重新添加电影...")
                         # 清空合集后，更新封面图
                         first_movie_data = None
@@ -344,12 +391,15 @@ class Get_Detail(object):
                             image_url = f"{self.emby_server}/emby/Items/{emby_id}/Images/Primary?api_key={self.emby_api_key}"
                             self.replace_cover_image(box_id, image_url)
                     else:
+                        logging.error(f"❌ 合集 {box_id} 清空失败，跳过添加电影")
                         print(f"集合 {box_id} 清空失败，跳过添加电影")
                         continue  # 跳过添加操作
                 else:
+                    logging.info(f"ℹ️ 合集 {box_id} 中没有需要清空的项目，直接添加电影...")
                     print(f"集合 {box_id} 中没有需要清空的项目，直接添加电影...")
             else:
                 # 如果合集不存在，尝试创建
+                logging.info(f"🔨 合集 {box_name} 不存在，开始创建...")
                 print(f"合集 {box_name} 不存在，开始创建...")
                 first_movie_data = None
                 # 遍历电影列表，找到第一个有效的 Emby 数据
@@ -359,13 +409,16 @@ class Get_Detail(object):
                         first_movie_data = emby_data
                         break
                 if not first_movie_data:
+                    logging.error(f"❌ 创建合集失败，无法找到初始电影数据，跳过 {box_name}")
                     print(f"创建合集失败，无法找到初始电影数据，跳过 {box_name}")
                     continue  # 跳过当前 RSS
                 emby_id = first_movie_data["Id"]
                 box_id = self.create_collection(box_name, emby_id)
                 if not box_id:
+                    logging.error(f"❌ 合集 {box_name} 创建失败，跳过")
                     print(f"合集 {box_name} 创建失败，跳过")
                     continue
+                logging.info(f"✅ 合集 '{box_name}' 已创建成功，ID: {box_id}")
                 print(f"合集 '{box_name}' 已创建成功，ID: {box_id}")
                 
                 # 创建合集后，立即更新封面图
