@@ -18,6 +18,7 @@ import requests
 import threading
 import fcntl
 import tempfile
+import pytz
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,6 +62,25 @@ class ImporterController:
         self.importers = self._load_importers()
         self.task_lock = TaskLock()
         self.schedules = self._load_schedules()
+        self.timezone = self._get_timezone()
+    
+    def _get_timezone(self):
+        """获取时区配置"""
+        # 优先从环境变量获取
+        tz_env = os.environ.get('TZ')
+        if tz_env:
+            try:
+                return pytz.timezone(tz_env)
+            except pytz.exceptions.UnknownTimeZoneError:
+                logging.warning(f"⚠️ 环境变量TZ指定的时区无效: {tz_env}")
+        
+        # 从配置文件获取
+        tz_config = self.config.get('Schedule', 'timezone', fallback='Asia/Shanghai')
+        try:
+            return pytz.timezone(tz_config)
+        except pytz.exceptions.UnknownTimeZoneError:
+            logging.warning(f"⚠️ 配置文件指定的时区无效: {tz_config}，使用默认时区")
+            return pytz.timezone('Asia/Shanghai')
     
     def _load_config(self) -> ConfigParser:
         """加载配置文件"""
@@ -276,15 +296,22 @@ def main():
         for importer_name, cron_expression in controller.schedules.items():
             if importer_name in controller.importers and cron_expression:
                 try:
-                    # 解析cron表达式
-                    cron = croniter(cron_expression, datetime.now())
+                    # 获取当前时区时间
+                    now = datetime.now(controller.timezone)
+                    
+                    # 解析cron表达式（使用时区）
+                    cron = croniter(cron_expression, now)
                     next_run = cron.get_next(datetime)
                     
+                    # 转换为时区时间
+                    next_run_tz = controller.timezone.localize(next_run)
+                    
                     logging.info(f"⏰ {importer_name} 调度: {cron_expression}")
-                    logging.info(f"⏰ {importer_name} 下次运行时间: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+                    logging.info(f"⏰ {importer_name} 时区: {controller.timezone}")
+                    logging.info(f"⏰ {importer_name} 下次运行时间: {next_run_tz.strftime('%Y-%m-%d %H:%M:%S %Z')}")
                     
                     # 设置定时任务
-                    schedule.every().day.at(next_run.strftime("%H:%M")).do(
+                    schedule.every().day.at(next_run_tz.strftime("%H:%M")).do(
                         controller.run_single_importer_task, importer_name
                     )
                     

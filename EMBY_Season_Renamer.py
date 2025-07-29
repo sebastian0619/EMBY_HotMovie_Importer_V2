@@ -17,7 +17,7 @@ from utils import EmbyAPI
 
 # 配置日志
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('emby_importer.log'),
@@ -322,13 +322,11 @@ class Get_Detail:
             return None
     
     def get_library_items(self, parent_id: str) -> List[Dict]:
-        """获取库中的项目"""
+        """获取库中的项目（递归获取）"""
         try:
             params = {
                 'ParentId': parent_id,
-                'HasTmdbId': True,
-                'Recursive': True,
-                'IncludeItemTypes': 'Series,Movie'
+                'fields': 'ProviderIds'
             }
             
             response = requests.get(
@@ -337,11 +335,22 @@ class Get_Detail:
                 params=params
             )
             
-            if response.status_code == 200:
-                return response.json().get('Items', [])
-            else:
+            if response.status_code != 200:
                 logging.error(f"❌ 获取库项目失败: {response.status_code}")
                 return []
+            
+            items = response.json().get('Items', [])
+            
+            # 分离文件夹和普通项目
+            items_folder = [item for item in items if item["Type"] == "Folder"]
+            items_normal = [item for item in items if item["Type"] != "Folder"]
+            
+            # 递归获取文件夹中的项目
+            for folder in items_folder:
+                folder_items = self.get_library_items(folder['Id'])
+                items_normal.extend(folder_items)
+            
+            return items_normal
                 
         except Exception as e:
             logging.error(f"❌ 获取库项目异常: {str(e)}")
@@ -376,7 +385,11 @@ class Get_Detail:
             logging.info(f"🎯 其中 {len(items_with_tmdb)} 个项目有TMDB ID")
             
             for item in items:
-                tmdb_id = item.get('ProviderIds', {}).get('Tmdb')
+                # 调试：打印ProviderIds信息
+                provider_ids = item.get('ProviderIds', {})
+                logging.debug(f"🔍 项目 {item['Name']} 的ProviderIds: {provider_ids}")
+                
+                tmdb_id = provider_ids.get('Tmdb')
                 if not tmdb_id:
                     logging.debug(f"⏭️ 跳过项目 {item['Name']}: 没有TMDB ID")
                     continue
