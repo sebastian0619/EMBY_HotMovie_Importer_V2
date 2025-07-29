@@ -482,6 +482,12 @@ class Get_Detail:
         self.library_names = config.get('CountryScraper', 'library_names', fallback='').split(',')
         self.dry_run = config.getboolean('CountryScraper', 'dry_run', fallback=True)
         
+        # 检查TMDB API密钥
+        tmdb_api_key = config.get('TMDB', 'tmdb_api_key', fallback='')
+        if not tmdb_api_key:
+            logging.error("❌ TMDB API密钥未配置，请在config.conf的[TMDB]部分设置tmdb_api_key")
+            return
+        
         # 初始化API客户端
         self.emby_api = EmbyAPI(
             emby_server=self.emby_server,
@@ -695,9 +701,14 @@ class Get_Detail:
             items = self.get_library_items(library_id)
             logging.info(f"📋 找到 {len(items)} 个项目")
             
+            # 统计有TMDB ID的项目
+            items_with_tmdb = [item for item in items if item.get('ProviderIds', {}).get('Tmdb')]
+            logging.info(f"🎯 其中 {len(items_with_tmdb)} 个项目有TMDB ID")
+            
             for item in items:
                 tmdb_id = item.get('ProviderIds', {}).get('Tmdb')
                 if not tmdb_id:
+                    logging.debug(f"⏭️ 跳过项目 {item['Name']}: 没有TMDB ID")
                     continue
                 
                 item_name = item['Name']
