@@ -60,6 +60,7 @@ class ImporterController:
         self.config = self._load_config()
         self.importers = self._load_importers()
         self.task_lock = TaskLock()
+        self.schedules = self._load_schedules()
     
     def _load_config(self) -> ConfigParser:
         """加载配置文件"""
@@ -97,6 +98,31 @@ class ImporterController:
                     logging.error(f"❌ 导入器加载异常 {importer_name}: {str(e)}")
         
         return importers
+    
+    def _load_schedules(self) -> Dict[str, str]:
+        """加载各导入器的调度配置"""
+        schedules = {}
+        global_cron = self.config.get('Schedule', 'global_cron', fallback='0 3 * * *')
+        
+        # 导入器调度配置映射
+        schedule_mapping = {
+            'hotmovie': 'HotMovie_cron',
+            'bangumi': 'Bangumi_cron', 
+            'doulist': 'Doulist_cron',
+            'season_renamer': 'SeasonRenamer_cron',
+            'country_scraper': 'CountryScraper_cron'
+        }
+        
+        for importer_name, cron_key in schedule_mapping.items():
+            cron = self.config.get('Schedule', cron_key, fallback='').strip()
+            if cron:
+                schedules[importer_name] = cron
+                logging.info(f"⏰ {importer_name} 使用自定义调度: {cron}")
+            else:
+                schedules[importer_name] = global_cron
+                logging.info(f"⏰ {importer_name} 使用全局调度: {global_cron}")
+        
+        return schedules
     
     def run_importer(self, importer_name: str) -> bool:
         """运行指定的导入器"""
@@ -179,7 +205,7 @@ class ImporterController:
         return results
     
     def run_scheduled_task(self):
-        """定时任务执行函数"""
+        """定时任务执行函数（所有导入器）"""
         logging.info("⏰ 开始执行定时任务")
         
         # 尝试获取任务锁
@@ -196,6 +222,29 @@ class ImporterController:
             self.task_lock.release()
         
         logging.info("⏰ 定时任务执行完成")
+    
+    def run_single_importer_task(self, importer_name: str):
+        """运行单个导入器的定时任务"""
+        logging.info(f"⏰ 开始执行 {importer_name} 定时任务")
+        
+        # 尝试获取任务锁
+        if not self.task_lock.acquire():
+            logging.warning(f"⚠️ 检测到任务已在运行，跳过 {importer_name} 定时任务")
+            return
+        
+        try:
+            success = self.run_importer(importer_name)
+            if success:
+                logging.info(f"✅ {importer_name} 定时任务执行完成")
+            else:
+                logging.error(f"❌ {importer_name} 定时任务执行失败")
+        except Exception as e:
+            logging.error(f"❌ {importer_name} 执行任务时发生错误: {str(e)}")
+        finally:
+            # 确保释放锁
+            self.task_lock.release()
+        
+        logging.info(f"⏰ {importer_name} 定时任务执行完成")
 
 def main():
     """主函数"""
@@ -206,12 +255,10 @@ def main():
         logging.error("❌ 没有启用的导入器，请检查配置文件")
         sys.exit(1)
     
-    # 获取定时配置
-    enable_schedule = controller.config.getboolean('Schedule', 'enable_schedule', fallback=False)
-    schedule_interval = controller.config.getint('Schedule', 'schedule_interval', fallback=60)
-    cron_expression = controller.config.get('Schedule', 'cron', fallback='')
+    # 检查是否有启用的调度
+    has_schedule = any(controller.schedules.values())
     
-    if enable_schedule:
+    if has_schedule:
         logging.info("🔄 启动守护模式")
         
         # 启动时立即执行一次全量任务
@@ -225,42 +272,36 @@ def main():
         # 进入守护模式
         logging.info("🔄 进入守护模式，等待下次定时执行...")
         
-        if cron_expression:
-            logging.info(f"⏰ 使用cron表达式: {cron_expression}")
-            # 使用croniter计算下次运行时间
-            cron = croniter(cron_expression, datetime.now())
-            next_run = cron.get_next(datetime)
-            logging.info(f"⏰ 下次运行时间: {next_run}")
-            
-            while True:
+        # 为每个导入器设置单独的调度
+        for importer_name, cron_expression in controller.schedules.items():
+            if importer_name in controller.importers and cron_expression:
                 try:
-                    now = datetime.now()
-                    if now >= next_run:
-                        logging.info("⏰ 定时任务触发，开始执行...")
-                        controller.run_scheduled_task()
-                        next_run = cron.get_next(datetime)
-                        logging.info(f"⏰ 下次运行时间: {next_run}")
-                    time.sleep(30)  # 每30秒检查一次
-                except KeyboardInterrupt:
-                    logging.info("🛑 收到退出信号，程序退出")
-                    break
+                    # 解析cron表达式
+                    cron = croniter(cron_expression, datetime.now())
+                    next_run = cron.get_next(datetime)
+                    
+                    logging.info(f"⏰ {importer_name} 调度: {cron_expression}")
+                    logging.info(f"⏰ {importer_name} 下次运行时间: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    # 设置定时任务
+                    schedule.every().day.at(next_run.strftime("%H:%M")).do(
+                        controller.run_single_importer_task, importer_name
+                    )
+                    
                 except Exception as e:
-                    logging.error(f"❌ 运行出错: {str(e)}")
-                    time.sleep(60)  # 出错后等待1分钟再继续
-        else:
-            logging.info(f"⏰ 使用固定间隔: {schedule_interval}分钟")
-            schedule.every(schedule_interval).minutes.do(controller.run_scheduled_task)
-            
-            while True:
-                try:
-                    schedule.run_pending()
-                    time.sleep(30)  # 每30秒检查一次
-                except KeyboardInterrupt:
-                    logging.info("🛑 收到退出信号，程序退出")
-                    break
-                except Exception as e:
-                    logging.error(f"❌ 运行出错: {str(e)}")
-                    time.sleep(60)  # 出错后等待1分钟再继续
+                    logging.error(f"❌ {importer_name} cron表达式解析失败: {str(e)}")
+        
+        # 主循环
+        while True:
+            try:
+                schedule.run_pending()
+                time.sleep(30)  # 每30秒检查一次
+            except KeyboardInterrupt:
+                logging.info("🛑 收到退出信号，程序退出")
+                break
+            except Exception as e:
+                logging.error(f"❌ 运行出错: {str(e)}")
+                time.sleep(60)  # 出错后等待1分钟再继续
     else:
         logging.info("🚀 执行单次任务")
         controller.run_all_importers()
