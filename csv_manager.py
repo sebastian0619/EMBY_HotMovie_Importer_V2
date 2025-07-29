@@ -135,6 +135,44 @@ def clear_csv():
     except Exception as e:
         print(f"❌ 清空失败: {str(e)}")
 
+def backup_csv():
+    """备份CSV文件"""
+    config = load_config()
+    csv_file_path = config.get('Output', 'csv_file_path')
+    
+    if not os.path.exists(csv_file_path):
+        print(f"❌ CSV文件不存在: {csv_file_path}")
+        return
+    
+    try:
+        # 创建备份文件
+        backup_file = f"{csv_file_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        import shutil
+        shutil.copy2(csv_file_path, backup_file)
+        
+        print(f"✅ 成功备份CSV文件")
+        print(f"📁 备份文件: {backup_file}")
+        
+    except Exception as e:
+        print(f"❌ 备份失败: {str(e)}")
+
+def reset_csv():
+    """重置CSV文件（清空但不备份）"""
+    config = load_config()
+    csv_file_path = config.get('Output', 'csv_file_path')
+    
+    try:
+        # 直接创建新的空文件
+        with open(csv_file_path, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow(['电影名称', '年份', '合集名称', '导入器', '记录时间'])
+        
+        print(f"✅ 成功重置CSV文件")
+        print(f"📁 文件路径: {csv_file_path}")
+        
+    except Exception as e:
+        print(f"❌ 重置失败: {str(e)}")
+
 def search_csv(keyword):
     """搜索CSV文件"""
     config = load_config()
@@ -163,7 +201,7 @@ def search_csv(keyword):
 
 def main():
     parser = argparse.ArgumentParser(description='CSV文件管理工具')
-    parser.add_argument('action', choices=['view', 'export-importer', 'export-collection', 'clear', 'search'], 
+    parser.add_argument('action', choices=['view', 'export-importer', 'export-collection', 'clear', 'backup', 'reset', 'search'], 
                        help='操作类型')
     parser.add_argument('--name', help='导入器名称或合集名称')
     parser.add_argument('--keyword', help='搜索关键词')
@@ -184,6 +222,10 @@ def main():
         export_by_collection(args.name)
     elif args.action == 'clear':
         clear_csv()
+    elif args.action == 'backup':
+        backup_csv()
+    elif args.action == 'reset':
+        reset_csv()
     elif args.action == 'search':
         if not args.keyword:
             print("❌ 请指定搜索关键词: --keyword <关键词>")
