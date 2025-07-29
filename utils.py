@@ -342,8 +342,9 @@ class EmbyAPI:
 class RSSHubAPI:
     """RSSHub API 统一接口类"""
     
-    def __init__(self, rsshub_server: str):
+    def __init__(self, rsshub_server: str, name_mapping: dict = None):
         self.rsshub_server = rsshub_server.rstrip('/')
+        self.name_mapping = name_mapping or {}
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36"
@@ -431,11 +432,8 @@ class RSSHubAPI:
                 if simplified_name_match:
                     name = simplified_name_match.group(1)
                 
-                # 名称映射
-                name_mapping = {
-                    "7号房的礼物": "七号房的礼物",
-                }
-                name = name_mapping.get(name, name)
+                # 应用名称映射
+                name = self.name_mapping.get(name, name)
                 
                 # 从描述中提取年份和类型
                 description = item.description

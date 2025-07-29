@@ -70,13 +70,26 @@ class Get_Detail:
         if self.csvout:
             self._init_csv_file()
         
+        # 从配置文件读取名称映射
+        self.name_mapping = {}
+        if config.has_section('NameMapping'):
+            for key, value in config.items('NameMapping'):
+                self.name_mapping[key] = value
+            logging.info(f"📝 加载名称映射: {len(self.name_mapping)} 条规则")
+        else:
+            logging.info("📝 未找到名称映射配置，使用默认映射")
+            # 默认映射作为后备
+            self.name_mapping = {
+                "7号房的礼物": "七号房的礼物",
+            }
+        
         # 初始化API客户端
         self.emby_api = EmbyAPI(
             emby_server=self.emby_server,
             emby_api_key=self.emby_api_key,
             emby_user_id=self.emby_user_id
         )
-        self.rss_api = RSSHubAPI(rsshub_server=self.rsshub_server)
+        self.rss_api = RSSHubAPI(rsshub_server=self.rsshub_server, name_mapping=self.name_mapping)
     
     def _init_csv_file(self):
         """初始化CSV文件，添加表头"""
