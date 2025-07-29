@@ -67,6 +67,10 @@ class Get_Detail:
         self.csv_file_path = config.get('Output', 'csv_file_path')
         self.csvout = config.getboolean('Output', 'csvout', fallback=False)
         
+        # 初始化CSV文件
+        if self.csvout:
+            self._init_csv_file()
+        
         # 初始化API客户端
         self.emby_api = EmbyAPI(
             emby_server=self.emby_server,
@@ -74,6 +78,36 @@ class Get_Detail:
             emby_user_id=self.emby_user_id
         )
         self.rss_api = RSSHubAPI(rsshub_server=self.rsshub_server)
+    
+    def _init_csv_file(self):
+        """初始化CSV文件，添加表头"""
+        try:
+            # 检查文件是否存在
+            file_exists = os.path.exists(self.csv_file_path)
+            
+            with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                if not file_exists:
+                    # 如果文件不存在，写入表头
+                    writer.writerow(['电影名称', '年份', '合集名称', '导入器', '记录时间'])
+                    logging.info(f"📄 创建CSV文件: {self.csv_file_path}")
+                else:
+                    logging.info(f"📄 使用现有CSV文件: {self.csv_file_path}")
+        except Exception as e:
+            logging.error(f"❌ 初始化CSV文件失败: {str(e)}")
+    
+    def _write_to_csv(self, movie_name, movie_year, box_name):
+        """写入CSV文件"""
+        try:
+            from datetime import datetime
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                writer.writerow([movie_name, movie_year, box_name, '豆列导入器', current_time])
+                logging.info(f"📝 记录到CSV: {movie_name} ({movie_year})")
+        except Exception as e:
+            logging.error(f"❌ 写入CSV失败: {str(e)}")
     
     def clean_title(self, title: str) -> str:
         """清理标题"""
@@ -237,9 +271,7 @@ class Get_Detail:
                     
                     # 记录到CSV文件
                     if self.csvout:
-                        with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
-                            writer = csv.writer(file)
-                            writer.writerow([movie_name, movie_year, box_name])
+                        self._write_to_csv(movie_name, movie_year, box_name)
             
             logging.info(f"🎯 合集更新完成: {box_name}, 新增 {added_count} 部电影")
         

@@ -79,7 +79,8 @@ class EmbyAPI:
                         logging.error("❌ Emby 数据库异常，已达到最大重试次数")
                         return None
                 
-                if response.status_code == 200:
+                # 204表示成功但无内容返回，这也是成功的响应
+                if response.status_code in [200, 204]:
                     return response
                 else:
                     logging.error(f"❌ API 请求失败: {response.status_code}")
@@ -198,7 +199,10 @@ class EmbyAPI:
         
         response = self._make_request('POST', url, headers=headers)
         if response:
-            logging.info(f"✅ 成功添加项目到合集")
+            if response.status_code == 204:
+                logging.info(f"✅ 成功添加项目到合集 (状态码: 204 - 无内容)")
+            else:
+                logging.info(f"✅ 成功添加项目到合集 (状态码: {response.status_code})")
             return True
         else:
             logging.error(f"❌ 添加项目到合集失败")
@@ -265,7 +269,10 @@ class EmbyAPI:
         
         response = self._make_request('POST', url, params=params)
         if response:
-            logging.info(f"✅ 成功清空合集")
+            if response.status_code == 204:
+                logging.info(f"✅ 成功清空合集 (状态码: 204 - 无内容)")
+            else:
+                logging.info(f"✅ 成功清空合集 (状态码: {response.status_code})")
             return True
         else:
             logging.error(f"❌ 清空合集失败")
@@ -294,7 +301,10 @@ class EmbyAPI:
             
             response = self._make_request('POST', url, headers=headers, data=base64_image)
             if response:
-                logging.info(f"✅ 成功替换合集封面")
+                if response.status_code == 204:
+                    logging.info(f"✅ 成功替换合集封面 (状态码: 204 - 无内容)")
+                else:
+                    logging.info(f"✅ 成功替换合集封面 (状态码: {response.status_code})")
                 return True
             else:
                 logging.error(f"❌ 替换合集封面失败")
