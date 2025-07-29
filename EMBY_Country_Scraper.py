@@ -17,7 +17,7 @@ from utils import EmbyAPI
 
 # 配置日志
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('emby_importer.log'),
@@ -727,6 +727,11 @@ class Get_Detail:
                 item_name = item['Name']
                 item_id = item['Id']
                 is_movie = item['Type'] == 'Movie'
+                
+                # 只处理电影和电视剧
+                if item['Type'] not in ['Movie', 'Series']:
+                    logging.debug(f"⏭️ 跳过非电影/电视剧项目: {item_name} (类型: {item['Type']})")
+                    continue
                 
                 logging.info(f"🎬 处理项目: {item_name} (TMDB: {tmdb_id})")
                 self.add_country_tags(item_id, tmdb_id, item_name, is_movie)

@@ -17,7 +17,7 @@ from utils import EmbyAPI
 
 # 配置日志
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('emby_importer.log'),
@@ -223,10 +223,9 @@ class Get_Detail:
     
     def rename_seasons(self, parent_id: str, tmdb_id: str, series_name: str, is_movie: bool):
         """重命名季节"""
-        # 获取剧集列表
-        items = self.emby_api.get_collection_items(parent_id)
-        if not items:
-            logging.warning(f"⚠️ 未找到剧集: {series_name}")
+        # 如果是电影，跳过（电影没有季节）
+        if is_movie:
+            logging.debug(f"📽️ 跳过电影: {series_name} (电影不支持季节重命名)")
             return
         
         tmdb_seasons, is_cache = self.get_season_info_from_tmdb(tmdb_id, is_movie, series_name)
@@ -397,6 +396,11 @@ class Get_Detail:
                 item_name = item['Name']
                 item_id = item['Id']
                 is_movie = item['Type'] == 'Movie'
+                
+                # 跳过电影，只处理电视剧
+                if is_movie:
+                    logging.debug(f"📽️ 跳过电影: {item_name}")
+                    continue
                 
                 logging.info(f"🎬 处理项目: {item_name} (TMDB: {tmdb_id})")
                 self.rename_seasons(item_id, tmdb_id, item_name, is_movie)
