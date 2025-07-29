@@ -1,6 +1,6 @@
-﻿configparser
+﻿requests
 feedparser
-requests
 schedule
 croniter
 pandas
+python-dateutil

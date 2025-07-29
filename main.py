@@ -74,7 +74,9 @@ class ImporterController:
         available_importers = {
             'hotmovie': {'module': 'EMBY_HotMovie_Importer', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_hotmovie', fallback=True), 'description': '热门电影导入器'},
             'bangumi': {'module': 'EMBY_Bangumi_Importer', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_bangumi', fallback=False), 'description': 'Bangumi导入器'},
-            'doulist': {'module': 'EMBY_Doulist_Importer', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_doulist', fallback=False), 'description': '豆列导入器'}
+            'doulist': {'module': 'EMBY_Doulist_Importer', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_doulist', fallback=False), 'description': '豆列导入器'},
+            'season_renamer': {'module': 'EMBY_Season_Renamer', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_season_renamer', fallback=False), 'description': '季节重命名器'},
+            'country_scraper': {'module': 'EMBY_Country_Scraper', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_country_scraper', fallback=False), 'description': '国家标签抓取器'}
         }
         
         for importer_name, importer_config in available_importers.items():
