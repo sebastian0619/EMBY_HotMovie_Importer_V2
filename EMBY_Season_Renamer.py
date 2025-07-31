@@ -213,8 +213,16 @@ class Get_Detail:
         1. 如果当前名称本身就是"第x季"格式，保持不变
         2. 如果当前名称是"第x季 xxx"格式，保持不变
         3. 如果当前名称不包含季数（只有名字），则修改为"第x季 xxx"格式
+        4. 特别篇（season_number为0）不添加季数标注
         """
         import re
+        
+        # 特别篇（season_number为0）不添加季数标注
+        if season_index == 0:
+            if tmdb_name and tmdb_name.strip():
+                return tmdb_name
+            else:
+                return current_name
         
         # 检查当前名称是否已经包含季数格式
         season_pattern = re.compile(r'第\s*\d+\s*季')
