@@ -138,13 +138,18 @@ class TMDBAPI:
         """获取电视剧信息"""
         try:
             url = f"{self.base_url}/tv/{tmdb_id}?language=zh-CN&append_to_response=alternative_titles"
+            logging.debug(f"🔗 TMDB API请求URL: {url}")
+            logging.debug(f"🔑 TMDB API密钥: {self.api_key[:10]}..." if self.api_key else "❌ TMDB API密钥未设置")
+            
             response = self.session.get(url, timeout=30)
             
-            if response.status_code == 200:
-                return response.json()
-            else:
+            logging.debug(f"📊 TMDB响应状态码: {response.status_code}")
+            if response.status_code != 200:
                 logging.error(f"❌ TMDB API请求失败: {response.status_code}")
+                logging.error(f"🔍 TMDB错误响应: {response.text[:200]}")
                 return None
+            
+            return response.json()
                 
         except Exception as e:
             logging.error(f"❌ 获取TMDB数据失败: {str(e)}")
