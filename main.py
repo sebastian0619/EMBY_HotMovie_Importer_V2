@@ -296,24 +296,48 @@ def main():
         for importer_name, cron_expression in controller.schedules.items():
             if importer_name in controller.importers and cron_expression:
                 try:
-                    # 获取当前时区时间
-                    now = datetime.now(controller.timezone)
+                    # 检查cron表达式是否为空
+                    if not cron_expression or cron_expression.strip() == '':
+                        logging.warning(f"⚠️ {importer_name} 未配置cron表达式，跳过调度")
+                        continue
                     
-                    # 解析cron表达式（使用时区）
-                    cron = croniter(cron_expression, now)
-                    next_run = cron.get_next(datetime)
+                    # 获取当前UTC时间，然后转换为目标时区
+                    now_utc = datetime.utcnow()
+                    now = controller.timezone.fromutc(now_utc)
                     
-                    # 转换为时区时间
-                    next_run_tz = controller.timezone.localize(next_run)
+                    # 解析cron表达式（使用UTC时间）
+                    cron = croniter(cron_expression, now_utc)
+                    next_run_utc = cron.get_next(datetime)
+                    
+                    # 转换为目标时区
+                    next_run = controller.timezone.fromutc(next_run_utc)
                     
                     logging.info(f"⏰ {importer_name} 调度: {cron_expression}")
                     logging.info(f"⏰ {importer_name} 时区: {controller.timezone}")
-                    logging.info(f"⏰ {importer_name} 下次运行时间: {next_run_tz.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                    logging.info(f"⏰ {importer_name} 下次运行时间: {next_run.strftime('%Y-%m-%d %H:%M:%S %Z')}")
                     
                     # 设置定时任务
-                    schedule.every().day.at(next_run_tz.strftime("%H:%M")).do(
-                        controller.run_single_importer_task, importer_name
-                    )
+                    # 根据cron表达式设置不同的调度
+                    if cron_expression.startswith('0 */'):
+                        # 每小时执行
+                        hour_interval = int(cron_expression.split()[1].replace('*/', ''))
+                        schedule.every(hour_interval).hours.do(
+                            controller.run_single_importer_task, importer_name
+                        )
+                        logging.info(f"⏰ {importer_name} 设置为每{hour_interval}小时执行一次")
+                    elif cron_expression.startswith('0 0 */'):
+                        # 每天执行
+                        day_interval = int(cron_expression.split()[2].replace('*/', ''))
+                        schedule.every(day_interval).days.do(
+                            controller.run_single_importer_task, importer_name
+                        )
+                        logging.info(f"⏰ {importer_name} 设置为每{day_interval}天执行一次")
+                    else:
+                        # 默认每天执行
+                        schedule.every().day.at(next_run.strftime("%H:%M")).do(
+                            controller.run_single_importer_task, importer_name
+                        )
+                        logging.info(f"⏰ {importer_name} 设置为每天{next_run.strftime('%H:%M')}执行")
                     
                 except Exception as e:
                     logging.error(f"❌ {importer_name} cron表达式解析失败: {str(e)}")

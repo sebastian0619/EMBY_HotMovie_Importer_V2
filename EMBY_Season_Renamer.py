@@ -128,25 +128,42 @@ class TMDBAPI:
     def __init__(self):
         self.api_key = config.get('TMDB', 'tmdb_api_key')
         self.base_url = config.get('TMDB', 'tmdb_api_base_url', fallback='https://api.themoviedb.org/3')
+        
+        # 检查API密钥
+        if not self.api_key:
+            logging.error("❌ TMDB API密钥未设置！请在config.conf的[TMDB]部分设置tmdb_api_key")
+            return
+        
+        # 检查API密钥格式
+        if not self.api_key.startswith('eyJ') and len(self.api_key) < 100:
+            logging.warning("⚠️ TMDB API密钥格式可能不正确，应该是Bearer Token格式（以eyJ开头的长字符串）")
+        
         self.session = requests.Session()
         self.session.headers.update({
             "accept": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         })
+        
+        logging.info(f"🔑 TMDB API密钥已配置: {self.api_key[:20]}...")
+        logging.info(f"🌐 TMDB API基础URL: {self.base_url}")
     
     def get_tv_series_info(self, tmdb_id: str) -> Optional[Dict]:
         """获取电视剧信息"""
+        if not self.api_key:
+            logging.error("❌ TMDB API密钥未设置，无法请求TMDB API")
+            return None
+            
         try:
             url = f"{self.base_url}/tv/{tmdb_id}?language=zh-CN&append_to_response=alternative_titles"
-            logging.debug(f"🔗 TMDB API请求URL: {url}")
-            logging.debug(f"🔑 TMDB API密钥: {self.api_key[:10]}..." if self.api_key else "❌ TMDB API密钥未设置")
+            logging.info(f"🔗 TMDB API请求URL: {url}")
+            logging.info(f"🔑 TMDB API密钥: {self.api_key[:20]}..." if self.api_key else "❌ TMDB API密钥未设置")
             
             response = self.session.get(url, timeout=30)
             
-            logging.debug(f"📊 TMDB响应状态码: {response.status_code}")
+            logging.info(f"📊 TMDB响应状态码: {response.status_code}")
             if response.status_code != 200:
                 logging.error(f"❌ TMDB API请求失败: {response.status_code}")
-                logging.error(f"🔍 TMDB错误响应: {response.text[:200]}")
+                logging.error(f"🔍 TMDB错误响应: {response.text[:500]}")
                 return None
             
             return response.json()
