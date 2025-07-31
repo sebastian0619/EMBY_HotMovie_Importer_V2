@@ -212,7 +212,7 @@ class Get_Detail:
         规则：
         1. 如果当前名称本身就是"第x季"格式，保持不变
         2. 如果当前名称是"第x季 xxx"格式，保持不变
-        3. 如果当前名称不包含季数（只有名字），则修改为"第x季节 xxx"格式
+        3. 如果当前名称不包含季数（只有名字），则修改为"第x季 xxx"格式
         """
         import re
         
@@ -225,7 +225,7 @@ class Get_Detail:
         # 当前名称不包含季数，需要添加季数
         if tmdb_name and tmdb_name.strip():
             # 使用TMDB的名称，但添加季数前缀
-            return f"第{season_index}季节 {tmdb_name}"
+            return f"第{season_index}季 {tmdb_name}"
         else:
             # TMDB没有名称，只使用季数
             return f"第{season_index}季"
