@@ -92,12 +92,16 @@ class Get_Detail:
         self.rss_api = RSSHubAPI(rsshub_server=self.rsshub_server, name_mapping=self.name_mapping)
     
     def _init_csv_file(self):
-        """初始化CSV文件，清空并添加表头"""
+        """初始化CSV文件，只在文件不存在时创建表头"""
         try:
-            with open(self.csv_file_path, mode='w', newline='', encoding='utf-8') as file:
-                writer = csv.writer(file)
-                writer.writerow(['作品名称', '年份', '合集名称', '导入器', '记录时间'])
-                logging.info(f"📄 清空并重新创建CSV文件: {self.csv_file_path}")
+            # 只在文件不存在时创建表头
+            if not os.path.exists(self.csv_file_path):
+                with open(self.csv_file_path, mode='w', newline='', encoding='utf-8') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(['作品名称', '年份', '合集名称', '导入器', '记录时间'])
+                logging.info(f"📄 创建新的CSV文件: {self.csv_file_path}")
+            else:
+                logging.debug(f"📄 CSV文件已存在，跳过初始化: {self.csv_file_path}")
         except Exception as e:
             logging.error(f"❌ 初始化CSV文件失败: {str(e)}")
     
@@ -108,8 +112,15 @@ class Get_Detail:
             current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             with open(self.csv_file_path, mode='a', newline='', encoding='utf-8') as file:
-                writer = csv.writer(file)
-                writer.writerow([movie_name, movie_year, box_name, 'Bangumi导入器', current_time])
+                writer = csv.DictWriter(file, fieldnames=['importer', 'collection_name', 'movie_name', 'year', 'reason', 'timestamp'])
+                writer.writerow({
+                    'importer': 'bangumi',
+                    'collection_name': box_name,
+                    'movie_name': movie_name,
+                    'year': movie_year,
+                    'reason': '未找到匹配的作品',
+                    'timestamp': current_time
+                })
                 logging.info(f"📝 记录到CSV: {movie_name} ({movie_year})")
         except Exception as e:
             logging.error(f"❌ 写入CSV失败: {str(e)}")

@@ -8,6 +8,7 @@ import os
 import sys
 import importlib
 import logging
+import csv
 from configparser import ConfigParser
 from typing import List, Dict, Any
 import time
@@ -190,6 +191,21 @@ class ImporterController:
         except Exception as e:
             logging.error(f"❌ 检查 Emby 状态失败: {str(e)}")
             return False
+    
+    def _init_csv_file(self):
+        """初始化CSV文件（在每轮运行开始时清空并写入表头）"""
+        try:
+            csv_file_path = self.config.get('Output', 'csv_file_path', fallback='./missing_movies.csv')
+            
+            # 清空文件并写入表头
+            with open(csv_file_path, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = ['importer', 'collection_name', 'movie_name', 'year', 'reason', 'timestamp']
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+            
+            logging.info(f"📝 CSV文件已清空并重新初始化: {csv_file_path}")
+        except Exception as e:
+            logging.error(f"❌ 初始化CSV文件失败: {str(e)}")
 
     def run_all_importers(self) -> Dict[str, bool]:
         """顺序运行所有启用的导入器"""
@@ -200,6 +216,9 @@ class ImporterController:
         if not self._check_emby_status():
             logging.error("❌ Emby 服务器状态异常，跳过所有导入器")
             return {name: False for name in self.importers.keys()}
+        
+        # 在开始运行所有导入器之前，清空CSV文件
+        self._init_csv_file()
         
         # 按顺序运行导入器
         for importer_name in self.importers.keys():
