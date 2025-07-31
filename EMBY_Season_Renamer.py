@@ -206,6 +206,30 @@ class Get_Detail:
         """安全获取字典值"""
         return _dict.get(key, default)
     
+    def _get_smart_season_name(self, current_name: str, tmdb_name: str, season_index: int) -> str:
+        """智能生成季节名称
+        
+        规则：
+        1. 如果当前名称本身就是"第x季"格式，保持不变
+        2. 如果当前名称是"第x季 xxx"格式，保持不变
+        3. 如果当前名称不包含季数（只有名字），则修改为"第x季节 xxx"格式
+        """
+        import re
+        
+        # 检查当前名称是否已经包含季数格式
+        season_pattern = re.compile(r'第\s*\d+\s*季')
+        if season_pattern.search(current_name):
+            # 当前名称已经包含季数，保持不变
+            return current_name
+        
+        # 当前名称不包含季数，需要添加季数
+        if tmdb_name and tmdb_name.strip():
+            # 使用TMDB的名称，但添加季数前缀
+            return f"第{season_index}季节 {tmdb_name}"
+        else:
+            # TMDB没有名称，只使用季数
+            return f"第{season_index}季"
+    
     def get_season_info_from_tmdb(self, tmdb_id: str, is_movie: bool, series_name: str):
         """从TMDB获取季节信息"""
         cache_key = ('mv' if is_movie else 'tv') + f'{tmdb_id}'
@@ -294,14 +318,17 @@ class Get_Detail:
                 single_season = season_response.json()
                 
                 if 'Name' in single_season:
-                    if season_name == tmdb_season_name:
+                    # 智能重命名逻辑
+                    new_season_name = self._get_smart_season_name(season_name, tmdb_season_name, season_index)
+                    
+                    if season_name == new_season_name:
                         if not self.dry_run:
                             logging.info(f"✅ {series_name} 第{season_index}季{from_cache} [{season_name}] 季名一致，跳过更新")
                         continue
                     else:
-                        logging.info(f"🔄 {series_name} 第{season_index}季{from_cache} 将从 [{season_name}] 更名为 [{tmdb_season_name}]")
+                        logging.info(f"🔄 {series_name} 第{season_index}季{from_cache} 将从 [{season_name}] 更名为 [{new_season_name}]")
                     
-                    single_season['Name'] = tmdb_season_name
+                    single_season['Name'] = new_season_name
                     
                     if 'LockedFields' not in single_season:
                         single_season['LockedFields'] = []

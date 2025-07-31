@@ -146,11 +146,11 @@ class Get_Detail:
             year=db_movie.year,
             ignore_played=self.ignore_played
         )
-    
+
     def create_collection(self, collection_name, emby_id):
         """创建合集"""
         return self.emby_api.create_collection(collection_name, emby_id)
-    
+
     def add_movie_to_collection(self, emby_id, collection_id):
         """添加电影到合集"""
         return self.emby_api.add_item_to_collection(emby_id, collection_id)
@@ -166,15 +166,15 @@ class Get_Detail:
                 'box_movies': items
             }
         return None
-    
+
     def get_emby_box_movie(self, box_id):
         """获取合集电影列表"""
         return self.emby_api.get_collection_items(box_id)
-    
+
     def clear_collection(self, collection_id):
         """清空合集"""
         return self.emby_api.clear_collection(collection_id)
-    
+
     def replace_cover_image(self, box_id, image_url):
         """替换合集封面"""
         return self.emby_api.replace_collection_cover(box_id, image_url)
@@ -195,7 +195,7 @@ class Get_Detail:
             ))
         
         return DbMovieRss(result['title'], movies)
-    
+
     def run(self):
         """运行导入器"""
         logging.info("🚀 开始运行豆列导入器")
@@ -256,7 +256,7 @@ class Get_Detail:
                 # 设置合集封面
                 image_url = f"{self.emby_server}/emby/Items/{first_movie_data['Id']}/Images/Primary?api_key={self.emby_api_key}"
                 self.replace_cover_image(box_id, image_url)
-                
+
                 # 初始化合集电影列表
                 emby_box = {'box_id': box_id, 'box_movies': []}
             
