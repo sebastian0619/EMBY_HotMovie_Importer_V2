@@ -224,11 +224,20 @@ class Get_Detail:
             else:
                 return current_name
         
-        # 检查当前名称是否已经包含季数格式
-        season_pattern = re.compile(r'第\s*\d+\s*季')
+        # 检查当前名称是否已经包含季数格式（只匹配"第x季"，不匹配"第x季节"）
+        season_pattern = re.compile(r'第\s*\d+\s*季$|第\s*\d+\s*季\s+')
         if season_pattern.search(current_name):
-            # 当前名称已经包含季数，保持不变
+            # 当前名称已经包含正确的季数格式，保持不变
             return current_name
+        
+        # 检查是否包含"第x季节"格式，如果包含则视为不一致
+        season_old_pattern = re.compile(r'第\s*\d+\s*季节')
+        if season_old_pattern.search(current_name):
+            # 当前名称包含旧的"第x季节"格式，需要更新
+            if tmdb_name and tmdb_name.strip():
+                return f"第{season_index}季 {tmdb_name}"
+            else:
+                return f"第{season_index}季"
         
         # 当前名称不包含季数，需要添加季数
         if tmdb_name and tmdb_name.strip():
