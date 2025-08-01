@@ -67,9 +67,7 @@ class Get_Detail:
         self.csv_file_path = config.get('Output', 'csv_file_path')
         self.csvout = config.getboolean('Output', 'csvout', fallback=False)
         
-        # 初始化CSV文件
-        if self.csvout:
-            self._init_csv_file()
+        # CSV文件由main.py统一管理，不需要在这里初始化
         
         # 从配置文件读取名称映射
         self.name_mapping = {}
@@ -92,20 +90,7 @@ class Get_Detail:
         )
         self.rss_api = RSSHubAPI(rsshub_server=self.rsshub_server, name_mapping=self.name_mapping)
     
-    def _init_csv_file(self):
-        """初始化CSV文件，只在文件不存在时创建表头"""
-        try:
-            # 只在文件不存在时创建表头
-            if not os.path.exists(self.csv_file_path):
-                with open(self.csv_file_path, mode='w', newline='', encoding='utf-8') as file:
-                    writer = csv.writer(file)
-                    writer.writerow(['电影名称', '年份', '合集名称', '导入器', '记录时间'])
-                logging.info(f"📄 创建新的CSV文件: {self.csv_file_path}")
-            else:
-                logging.debug(f"📄 CSV文件已存在，跳过初始化: {self.csv_file_path}")
-        except Exception as e:
-            logging.error(f"❌ 初始化CSV文件失败: {str(e)}")
-    
+
     def _write_to_csv(self, movie_name, movie_year, box_name):
         """写入CSV文件"""
         try:
@@ -126,22 +111,7 @@ class Get_Detail:
         except Exception as e:
             logging.error(f"❌ 写入CSV失败: {str(e)}")
     
-    def _get_csv_stats(self):
-        """获取CSV文件统计信息"""
-        try:
-            if not os.path.exists(self.csv_file_path):
-                return 0
-            
-            with open(self.csv_file_path, mode='r', encoding='utf-8') as file:
-                reader = csv.reader(file)
-                # 跳过表头
-                next(reader, None)
-                count = sum(1 for row in reader)
-                return count
-        except Exception as e:
-            logging.error(f"❌ 获取CSV统计失败: {str(e)}")
-            return 0
-    
+
     def clean_title(self, title: str) -> str:
         """清理标题"""
         # 移除多余的空白字符
@@ -308,10 +278,7 @@ class Get_Detail:
             
             logging.info(f"🎯 合集更新完成: {box_name}, 新增 {added_count} 部电影")
         
-        # 输出CSV统计信息
-        if self.csvout:
-            csv_count = self._get_csv_stats()
-            logging.info(f"📊 CSV记录统计: 本次运行记录了 {csv_count} 部未找到的电影")
+
         
         logging.info("✅ 豆列导入器运行完成")
 

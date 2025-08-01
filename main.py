@@ -243,6 +243,17 @@ class ImporterController:
         total_count = len(results)
         logging.info(f"🎯 所有导入器运行完成: {success_count}/{total_count} 成功")
         
+        # 输出CSV统计信息
+        csv_file_path = self.config.get('Output', 'csv_file_path', fallback='./missing_movies.csv')
+        if os.path.exists(csv_file_path):
+            try:
+                with open(csv_file_path, mode='r', encoding='utf-8') as file:
+                    reader = csv.DictReader(file)
+                    csv_count = sum(1 for row in reader)
+                    logging.info(f"📊 CSV记录统计: 本次运行记录了 {csv_count} 部未找到的项目")
+            except Exception as e:
+                logging.error(f"❌ 读取CSV统计失败: {str(e)}")
+        
         return results
     
     def run_scheduled_task(self):
