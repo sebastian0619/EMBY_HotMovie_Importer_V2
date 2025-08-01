@@ -98,7 +98,8 @@ class ImporterController:
             'bangumi': {'module': 'EMBY_Bangumi_Importer', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_bangumi', fallback=False), 'description': 'Bangumi导入器'},
             'doulist': {'module': 'EMBY_Doulist_Importer', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_doulist', fallback=False), 'description': '豆列导入器'},
             'season_renamer': {'module': 'EMBY_Season_Renamer', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_season_renamer', fallback=False), 'description': '季节重命名器'},
-            'country_scraper': {'module': 'EMBY_Country_Scraper', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_country_scraper', fallback=False), 'description': '国家标签抓取器'}
+            'country_scraper': {'module': 'EMBY_Country_Scraper', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_country_scraper', fallback=False), 'description': '国家标签抓取器'},
+            'genre_mapper': {'module': 'EMBY_Genre_Mapper', 'class': 'Get_Detail', 'enabled': self.config.getboolean('Importers', 'enable_genre_mapper', fallback=False), 'description': '类型标签映射器'}
         }
         
         for importer_name, importer_config in available_importers.items():
@@ -131,7 +132,8 @@ class ImporterController:
             'bangumi': 'Bangumi_cron', 
             'doulist': 'Doulist_cron',
             'season_renamer': 'SeasonRenamer_cron',
-            'country_scraper': 'CountryScraper_cron'
+            'country_scraper': 'CountryScraper_cron',
+            'genre_mapper': 'GenreMapper_cron'
         }
         
         for importer_name, cron_key in schedule_mapping.items():

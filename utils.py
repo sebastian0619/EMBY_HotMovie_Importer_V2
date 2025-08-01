@@ -116,6 +116,48 @@ class EmbyAPI:
             logging.error(f"❌ 检查 Emby 状态失败: {str(e)}")
             return False
     
+    def _extract_series_info(self, name: str) -> tuple:
+        """从名称中提取剧集信息和季数
+        
+        Returns:
+            tuple: (series_name, season_number) 或 (name, None)
+        """
+        import re
+        
+        # 匹配各种季数格式
+        patterns = [
+            r'(.+?)\s*第([一二三四五六七八九十\d]+)季',  # 中文数字
+            r'(.+?)\s*Season\s*(\d+)',  # 英文Season
+            r'(.+?)\s*S(\d+)',  # 英文S
+            r'(.+?)\s*第(\d+)季',  # 阿拉伯数字
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, name)
+            if match:
+                series_name = match.group(1).strip()
+                season_str = match.group(2)
+                
+                # 转换中文数字为阿拉伯数字
+                if season_str in ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']:
+                    chinese_to_arabic = {
+                        '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+                        '六': 6, '七': 7, '八': 8, '九': 9, '十': 10
+                    }
+                    season_number = chinese_to_arabic.get(season_str)
+                else:
+                    try:
+                        season_number = int(season_str)
+                    except ValueError:
+                        season_number = None
+                
+                if season_number:
+                    logging.debug(f"🔍 提取到剧集信息: 剧名='{series_name}', 季数={season_number}")
+                    return series_name, season_number
+        
+        # 没有找到季数信息
+        return name, None
+    
     def search_item_by_name(self, name: str, item_type: str = "Movie", year: str = None, 
                            ignore_played: bool = False) -> Optional[Dict]:
         """根据名称搜索媒体项目"""
@@ -136,11 +178,19 @@ class EmbyAPI:
         if year:
             year_param = f"&Year={year}"
         
+        # 尝试提取剧集信息和季数
+        series_name, season_number = self._extract_series_info(name)
+        
+        # 如果提取到了季数信息，使用剧名搜索
+        search_name = series_name if season_number else name
+        
         # 构建URL
-        search_term = urllib.parse.quote(name)
+        search_term = urllib.parse.quote(search_name)
         url = f"{self.emby_server}/emby/{emby_user_id}/Items?api_key={self.emby_api_key}{ignore_played_param}&Recursive=true&{include_item_types}&SearchTerm={search_term}{year_param}"
         
-        logging.info(f"🔍 搜索项目: {name} (类型: {item_type}, 年份: {year})")
+        logging.info(f"🔍 搜索项目: {search_name} (类型: {item_type}, 年份: {year})")
+        if season_number:
+            logging.info(f"🎬 检测到季数信息: 第{season_number}季")
         
         response = self._make_request('GET', url)
         if not response:
@@ -152,14 +202,28 @@ class EmbyAPI:
             logging.info(f"📈 找到 {total_count} 个匹配项目")
             
             if total_count > 0:
-                for item in data.get('Items', []):
-                    if item['Name'] == name:
-                        logging.info(f"✅ 找到匹配项目: {item['Name']} (ID: {item.get('Id', 'N/A')})")
-                        return item
-                logging.warning(f"⚠️ 未找到完全匹配的项目: {name}")
-                return None
+                # 如果有季数信息，需要进一步匹配
+                if season_number:
+                    for item in data.get('Items', []):
+                        # 检查是否有季数信息
+                        if 'IndexNumber' in item and item['IndexNumber'] == season_number:
+                            logging.info(f"✅ 找到匹配的季数: {item['Name']} 第{item['IndexNumber']}季 (ID: {item.get('Id', 'N/A')})")
+                            return item
+                    
+                    # 如果没有找到匹配的季数，返回第一个匹配的剧集
+                    first_item = data.get('Items', [])[0]
+                    logging.warning(f"⚠️ 未找到第{season_number}季，返回第一个匹配的剧集: {first_item['Name']}")
+                    return first_item
+                else:
+                    # 没有季数信息，直接匹配名称
+                    for item in data.get('Items', []):
+                        if item['Name'] == name:
+                            logging.info(f"✅ 找到匹配项目: {item['Name']} (ID: {item.get('Id', 'N/A')})")
+                            return item
+                    logging.warning(f"⚠️ 未找到完全匹配的项目: {name}")
+                    return None
             else:
-                logging.info(f"ℹ️ 未找到任何匹配的项目: {name}")
+                logging.info(f"ℹ️ 未找到任何匹配的项目: {search_name}")
                 return None
                 
         except ValueError as e:
